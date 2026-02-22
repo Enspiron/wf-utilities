@@ -10,6 +10,15 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Exclude large data directories from function bundling
+  experimental: {
+    turbotrace: {
+      logLevel: 'error',
+      contextDirectory: process.cwd(),
+    },
+  },
+  // Configure output tracing to exclude data files
+  outputFileTracingRoot: process.cwd(),
 };
 
 export default nextConfig;
