@@ -43,8 +43,8 @@ export async function GET(request: Request) {
       const fs = await import('fs');
       const path = await import('path');
 
-      const datalistPath = path.join(process.cwd(), 'app', 'api', 'orderedmap', 'datalist');
-      const datalistEnPath = path.join(process.cwd(), 'app', 'api', 'orderedmap', 'datalist_en');
+      const datalistPath = path.join(process.cwd(), 'public', 'data', 'datalist');
+      const datalistEnPath = path.join(process.cwd(), 'public', 'data', 'datalist_en');
 
       const characterPath = path.join(datalistPath, 'character', 'character.json');
       const characterData = JSON.parse(fs.readFileSync(characterPath, 'utf-8'));

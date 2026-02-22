@@ -31,9 +31,8 @@ export async function GET(request: NextRequest) {
       
       const filePath = path.join(
         process.cwd(),
-        'app',
-        'api',
-        'orderedmap',
+        'public',
+        'data',
         dataFolder,
         'character',
         'character_text.json'
