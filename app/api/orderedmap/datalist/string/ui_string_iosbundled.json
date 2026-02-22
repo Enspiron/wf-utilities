@@ -1,0 +1,212 @@
+{
+    "tutorial_restore_dialog_description": [
+        "チュートリアルを再開します"
+    ],
+    "tutorial_shoten_dialog_description": [
+        "体験版までのシナリオをスキップしますか？\n（チュートリアルを含みます）"
+    ],
+    "tutorial_shoten_button": [
+        "スキップする"
+    ],
+    "tutorial_not_shoten_button": [
+        "スキップしない"
+    ],
+    "tutorial_trial_played_dialog_description": [
+        "体験版を遊びましたか？"
+    ],
+    "tutorial_trial_played_button": [
+        "遊んだ"
+    ],
+    "tutorial_trial_not_played_button": [
+        "遊んでいない"
+    ],
+    "outline_dialog_title": [
+        "あらすじ"
+    ],
+    "unavailable_due_to_tutorial_message": [
+        "チュートリアル中は使用できません"
+    ],
+    "tutorial_outhole_speech": [
+        "王とお話しください！\n勇者様！"
+    ],
+    "common_next": [
+        "つぎへ"
+    ],
+    "common_previous": [
+        "もどる"
+    ],
+    "battle_pause_menu_label_config": [
+        "ゲーム設定"
+    ],
+    "battle_pause_menu_retire": [
+        "リタイア"
+    ],
+    "battle_pause_menu_dialog_giveup": [
+        "クエストをリタイアしますか？"
+    ],
+    "battle_pause_menu_config_auto_play_mode_title": [
+        "オートプレイ"
+    ],
+    "battle_pause_menu_config_auto_play_mode_detail": [
+        "フリッパー操作、ダッシュ\nスキル発動をオートで行います"
+    ],
+    "stamina": [
+        "スタミナ"
+    ],
+    "quest_result_time_multiplier": [
+        "x::value::"
+    ],
+    "clear_time_bonus": [
+        "クリアタイムボーナス"
+    ],
+    "battle_score": [
+        "バトルスコア"
+    ],
+    "battle_action_skill_invocation_prohibited_by_death": [
+        "棺桶状態なのでスキルは使えません"
+    ],
+    "battle_action_skill_invocation_prohibited_by_lacking_of_skill_point": [
+        "スキルゲージがたまっていません"
+    ],
+    "battle_action_skill_invocation_prohibited_by_paralysis": [
+        "マヒのためスキルは使えません"
+    ],
+    "battle_action_skill_invocation_prohibited_by_silent": [
+        "沈黙状態のためスキルは使えません"
+    ],
+    "battle_action_skill_invocation_prohibited_by_skill_moving": [
+        "ほかのスキルを使っています"
+    ],
+    "battle_action_skill_invocation_prohibited_by_system": [
+        "この状態でスキルは使えません"
+    ],
+    "battle_ball_out_of_zone_bounds": [
+        "画面外へ出てしまったためもどされました"
+    ],
+    "battle_ball_auto_launch": [
+        "しばらく操作がなかったためオートプレイになりました"
+    ],
+    "auto_play_mode_toggle_button_label": [
+        "AUTO"
+    ],
+    "character_name_with_level": [
+        "::name:: Lv::level::"
+    ],
+    "tutorial_light_join_speech": [
+        "…… うっ……ここは一体……？"
+    ],
+    "tutorial_light_name": [
+        "ライト"
+    ],
+    "tutorial_light_nickname": [
+        "獣になった勇者"
+    ],
+    "share_button_label": [
+        "シェア"
+    ],
+    "quest_result_next_button_label": [
+        "次へ"
+    ],
+    "quest_result_disband_host_button_label": [
+        "解散する"
+    ],
+    "quest_result_disband_guest_button_label": [
+        "ルームを抜ける"
+    ],
+    "quest_result_room_button_label": [
+        "ルームにもどる"
+    ],
+    "quest_result_label_reward_item": [
+        "獲得アイテム"
+    ],
+    "quest_result_label_multi": [
+        "協力"
+    ],
+    "quest_result_rank_up_card_stamina_addition": [
+        "スタミナ最大値 ::before::→<font color='#2FC5B5'>::after::</font>"
+    ],
+    "quest_result_rank_up_card_stamina_heal_rate": [
+        "スタミナ回復速度 ::value::%アップ"
+    ],
+    "quest_result_rank_up_card_daily_quest_point_addition": [
+        "ブーストポイント最大値 ::before::→<font color='#2FC5B5'>::after::</font>"
+    ],
+    "quest_result_rank_up_card_stamina_all_heal": [
+        "スタミナが全回復しました"
+    ],
+    "quest_result_character_added_experience": [
+        "EXP+::value::"
+    ],
+    "quest_result_added_rank_point": [
+        "RP+::value::"
+    ],
+    "quest_result_player_rank": [
+        "PlayerRank"
+    ],
+    "quest_result_label_contribution_ranking": [
+        "順位"
+    ],
+    "quest_result_label_contribution_score": [
+        "貢献度"
+    ],
+    "quest_result_player_name_with_player_rank": [
+        "ランク ::rank:: ::player_name::"
+    ],
+    "common_clear_rank_c": [
+        "C"
+    ],
+    "common_clear_rank_b": [
+        "B"
+    ],
+    "common_clear_rank_a": [
+        "A"
+    ],
+    "common_clear_rank_s": [
+        "S"
+    ],
+    "common_clear_rank_ss": [
+        "SS"
+    ],
+    "character_level_short": [
+        "Lv"
+    ],
+    "share_title": [
+        "シェア"
+    ],
+    "player_rank": [
+        "プレイヤーランク"
+    ],
+    "item_thumbnail_item_number_prefix": [
+        "×"
+    ],
+    "tutorial_quest_number": [
+        "ステップ::quest::"
+    ],
+    "story_quest_skip_dialog_button_positive": [
+        "先に進む"
+    ],
+    "common_mana": [
+        "マナ"
+    ],
+    "common_stone_description": [
+        "ガチャや有用なアイテムの購入が出来るふしぎな石"
+    ],
+    "common_stone": [
+        "星導石"
+    ],
+    "common_mana_description": [
+        "あらゆる世界の様々なものに宿る力の結晶 アビリティの習得や有用なアイテムの購入が出来る"
+    ],
+    "payment_fail_restart_required": [
+        "購入の反映には再起動が必要です"
+    ],
+    "payment_fail_continue": [
+        "商品の購入の反映に時間がかかっています\n反映されるまでしばらくお待ちください\n(エラー番号: ::errorCode::)"
+    ],
+    "payment_success": [
+        "::name::を購入しました\n(保有星導石 : ::count::個 )"
+    ],
+    "weight_saving_dialog_message": [
+        "ワールドフリッパーを快適に遊べるよう\n軽量表示をオンにしました\n\nもどしたい場合はオプションで軽量表示を\nオフにしてください"
+    ]
+}

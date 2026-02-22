@@ -1,0 +1,1244 @@
+{
+    "sound_effect/battle_common/se_boss_dead": [
+        "0.37",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_boss_dead_big": [
+        "0.37",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_boss_down": [
+        "0.37",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_boss_encount": [
+        "0.4",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_boss_weakpoint_appearance": [
+        "0.35",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_boss_weakpoint_break": [
+        "0.45",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_boss_weakpoint_break_flinch": [
+        "0.37",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_chain_icon_addition": [
+        "0.5",
+        "0",
+        "0",
+        "7"
+    ],
+    "sound_effect/battle_common/se_chain_invoke_cutin": [
+        "0.5",
+        "0",
+        "0",
+        "7"
+    ],
+    "sound_effect/battle_common/se_chain_lock": [
+        "0.5",
+        "0",
+        "0",
+        "7"
+    ],
+    "sound_effect/battle_common/se_combo_power_flip_charge_lv1": [
+        "0",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_combo_power_flip_charge_lv2": [
+        "0",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_combo_power_flip_charge_lv3": [
+        "0",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_combo_power_flip_max_lv1": [
+        "0.35",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_combo_power_flip_max_lv2": [
+        "0.35",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_combo_power_flip_max_lv3": [
+        "0.35",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_dash": [
+        "0.27",
+        "0.05",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_enemy_appearance": [
+        "0.2",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_enemy_damage_critical": [
+        "0.28",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_enemy_damage_normal": [
+        "0.28",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_enemy_death": [
+        "0.28",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_enemy_defeat": [
+        "0.25",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_enemy_encount_chapterboss": [
+        "0.4",
+        "0",
+        "0",
+        "2"
+    ],
+    "sound_effect/battle_common/se_enemy_encount_middleboss": [
+        "0.4",
+        "0",
+        "0",
+        "2"
+    ],
+    "sound_effect/battle_common/se_enemy_encount_normal": [
+        "0.4",
+        "0",
+        "0",
+        "2"
+    ],
+    "sound_effect/battle_common/se_enemy_escape": [
+        "0.2",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_fever_time_start": [
+        "0.35",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_fever_time_yakumono_shine": [
+        "0.32",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_flipper": [
+        "0.15",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_flipper_start": [
+        "0.35",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_gameover": [
+        "0.3",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_joining_assist_character": [
+        "0.35",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_pause_close": [
+        "0.3",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_pause_open": [
+        "0.3",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_player_charge": [
+        "0.28",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_player_charge_completed": [
+        "0.25",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_player_coffin_break": [
+        "0.35",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_player_coffin_set": [
+        "0.22",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_player_damage": [
+        "0.3",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_player_dash": [
+        "0.35",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_player_guard": [
+        "0.25",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_player_join": [
+        "0.35",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_player_kaitengiri": [
+        "0.3",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_player_skill_invoke": [
+        "0.35",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_player_skill_ready": [
+        "0.3",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_power_flip_shot": [
+        "0.3",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_production_magic": [
+        "0.4",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_short_dash03": [
+        "0.25",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/battle_common/se_zone_clear": [
+        "0.35",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/blow/se_air_blast": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/blow/se_aura_clash": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/blow/se_blow_hard_parry": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/blow/se_deck_hit": [
+        "0.32",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/blow/se_hit_ground": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/dark/se_gigantic_darkness_emit": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/dark/se_poison_babble": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/dark/se_sink_force_incidence": [
+        "0.32",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_enfeebling_freeze_long": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_resistance_slow": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_fire_breath": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_fire_laser": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_ghost": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_magic_big_wave_charge": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_magic_big_wave_shot": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_magic_circle_charge": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_magic_circle_start": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_magic_laser_short": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_magic_wave_charge": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_magic_wave_shot": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_magic_wave_start": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_power_flip_supporter_lv1": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/element/se_power_flip_supporter_lv2": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/fire/se_big_cannon_shot": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/fire/se_flame_collision": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/fire/se_flare_up": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/fire/se_fire_laser": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/fire/se_single_fire": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/gacha/se_amulet_hit1": [
+        "0.4",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_amulet_hit2": [
+        "0.4",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_amulet_near1": [
+        "0.4",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_amulet_near2": [
+        "0.4",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_entry1": [
+        "0.4",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_entry2": [
+        "0.4",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_entry3_a_1": [
+        "0.3",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_entry3_a_10": [
+        "0.3",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_entry3_b_10": [
+        "0.3",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_entry3_c_1": [
+        "0.35",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_entry3_c_10": [
+        "0.35",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_entry4": [
+        "0.35",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_exactly_star": [
+        "0.28",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_exactly_star_last": [
+        "0.28",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_fade": [
+        "0.35",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_join_fall1": [
+        "0.35",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_join_fall2": [
+        "0.4",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_join_fullshot": [
+        "0.4",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_join_pose1_star4": [
+        "0.3",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_join_pose1_star5": [
+        "0.3",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_join_pose2": [
+        "0.4",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_join_rarity1_high": [
+        "0.2",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_join_rarity1_normal": [
+        "0.2",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_join_rarity2_star3": [
+        "0.4",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_join_rarity2_star4": [
+        "0.42",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_join_rarity2_star5": [
+        "0.45",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_pin_hit": [
+        "0.3",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/gacha/se_shining_silhouette_star5": [
+        "0.4",
+        "0",
+        "0",
+        "3"
+    ],
+    "sound_effect/light/se_power_flip_supporter_lv3_attack": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/light/se_light_hard_flash_parry": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/light/se_light_sparkling_hard_explosion": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/light/se_light_rising_shine": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/light/se_waftage_sparkle": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/main_chapter_00_voice/se_fu": [
+        "0.5",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/main_chapter_00_voice/se_ha": [
+        "0.5",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/main_chapter_00_voice/se_ha_1": [
+        "0.5",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/main_chapter_00_voice/se_haaa": [
+        "0.5",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/main_chapter_00_voice/se_ikuzo_2": [
+        "0.5",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/main_chapter_00_voice/se_n": [
+        "0.5",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/main_chapter_00_voice/se_power_flip_0": [
+        "0.5",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/main_chapter_00_voice/se_uketemiyo": [
+        "0.5",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/monster/se_gravity_beast": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/monster/se_gust": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/monster/se_teleportation": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/result/se_experience_point_bar": [
+        "0.27",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_item": [
+        "0.35",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_item_rare": [
+        "0.4",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_level_up": [
+        "0.35",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_level_max": [
+        "0.4",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_rank_a": [
+        "0.4",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_rank_b": [
+        "0.4",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_rank_c": [
+        "0.4",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_rank_display": [
+        "0.35",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_rank_rotation": [
+        "0.4",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_rank_s": [
+        "0.4",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_rank_ss": [
+        "0.4",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_rank_up": [
+        "0.45",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_score_bar": [
+        "0.25",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_treasure_box_open": [
+        "0.35",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/result/se_super_rare_treasure_box_open": [
+        "0.35",
+        "0",
+        "0",
+        "8"
+    ],
+    "sound_effect/sf/se_admin_gauge_finish": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/sf/se_appearance": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/sf/se_effect_skill_enhancing_penetrate_long": [
+        "0.2",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/sf/se_effect_skill_heal_wind_oracle": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/sf/se_electron_power_rise": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/sf/se_enhancing_invincible": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/sf/se_melodic_tension_down": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/sf/se_melodic_tension_up": [
+        "0.28",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/sf/se_player_recovery": [
+        "0.35",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/sf/se_power_flip_ranged_lv1": [
+        "0.18",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/sf/se_power_flip_ranged_lv2": [
+        "0.2",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/sf/se_power_flip_ranged_lv3": [
+        "0.2",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_appearance": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_ask": [
+        "0.28",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_brightness": [
+        "0.21",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_emote_happning": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_emote_notice_v03": [
+        "0.24",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_funny_bump": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_impress_black_injection": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_impress_landing_b": [
+        "0.2",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_impress_stabsword_dl": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_impress_turnlance": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_jump_up": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_question": [
+        "0.26",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_story_darkness_aura": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_story_break_glass": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/slash/se_consecutive_metal_blade": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/slash/se_fine_superior_blade": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/slash/se_power_flip_knight_lv1": [
+        "0.28",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/slash/se_power_flip_knight_lv2": [
+        "0.28",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/slash/se_power_flip_knight_lv3_smash": [
+        "0.28",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/slash/se_power_flip_knight_lv3_spin": [
+        "0.28",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/slash/se_rapier_slash": [
+        "0.26",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/slash/se_slash_finish": [
+        "0.27",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/slash/se_slash_metal_claw": [
+        "0.28",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/slash/se_slash_short": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/slash/se_slash_short_incisure": [
+        "0.25",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/slash/se_slash_swing": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/slash/se_strong_slash_stroke": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/special_motion/se_special_fire_2": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/system/se_slide_close": [
+        "0.15",
+        "0",
+        "0",
+        "6"
+    ],
+    "sound_effect/system/se_talk_advance": [
+        "0.25",
+        "0",
+        "0",
+        "10"
+    ],
+    "sound_effect/thunder/se_paralysis_umbness": [
+        "0.28",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/thunder/se_thunder_rumbling": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/thunder/se_thunder_stamp": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/unique/se_alk_explosion": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/unique/se_alk_jump": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/water/se_violent_swirling_water": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/weapon/se_cannon": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/weapon/se_little_bullet_short": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/weapon/se_throw_fast": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/wind/se_screw_thrust_big": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/wind/se_swirling_wind_stick": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/wind/se_wind_medium_size_swing": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/wind/se_wind_premonition_storm": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/yakumono/se_bumper": [
+        "0.18",
+        "0",
+        "0",
+        "11"
+    ],
+    "sound_effect/yakumono/se_dash_panel": [
+        "0.3",
+        "0",
+        "0",
+        "11"
+    ],
+    "sound_effect/yakumono/se_hit_grass": [
+        "0.15",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/yakumono/se_hit_wall": [
+        "0.18",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/yakumono/se_pot_break": [
+        "0.18",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/yakumono/se_sf_bos_break": [
+        "0.18",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/yakumono/se_sf_box_hit": [
+        "0.15",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/yakumono/se_slingshot": [
+        "0.2",
+        "0",
+        "0",
+        "11"
+    ],
+    "sound_effect/yakumono/se_yuremono_gravel_hit": [
+        "0.1",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/dark/se_concentrate_ominous": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/light/se_light_aura": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/thunder/se_lightning_needle_rip": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/dark/se_sink_wamble": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/light/se_light_sharp_reflection": [
+        "0.35",
+        "0",
+        "0",
+        "12"
+    ],
+    "sound_effect/situation/se_bright": [
+        "0.3",
+        "0",
+        "0",
+        "12"
+    ]
+}

@@ -1,0 +1,25 @@
+{
+    "fix_hp_tutorial_normal": {
+        "1": [
+            "1"
+        ],
+        "100": [
+            "83"
+        ]
+    },
+    "fix_hp_basic_normal": {
+        "100": [
+            "1"
+        ]
+    },
+    "fix_hp_always_multiple_one": {
+        "100": [
+            "1"
+        ]
+    },
+    "fix_hp_tutorial": {
+        "100": [
+            "1"
+        ]
+    }
+}

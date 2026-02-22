@@ -1,0 +1,26 @@
+{
+    "battle_tap": [
+        "1",
+        "tutorial/movie/tap/tap"
+    ],
+    "battle_power_flip": [
+        "1",
+        "tutorial/movie/powerflip/powerflip"
+    ],
+    "battle_dash": [
+        "1",
+        "tutorial/movie/dash/dash"
+    ],
+    "battle_action_skill": [
+        "1",
+        "tutorial/movie/gauge/gauge"
+    ],
+    "battle_weak_point": [
+        "1",
+        "tutorial/movie/weakpoint/weakpoint"
+    ],
+    "battle_zone_clear": [
+        "1",
+        "tutorial/movie/zoneclear/zoneclear"
+    ]
+}

@@ -1,0 +1,50 @@
+{
+    "light_castle_throne": [
+        "battle/field/world_light/light_castle_throne/background/background",
+        "battle/field/world_light/light_castle_throne/foreground/foreground",
+        "(None)",
+        "(None)",
+        "(None)",
+        "(None)",
+        "(None)",
+        "battle/field_object/world_tree/tree_grass01/gate/tree_grass01_gate",
+        "battle/field_object/world_tree/tree_grass01/transit_pod/tree_grass01_transit_pod",
+        "battle/field_object/world_tree/tree_grass01/fever_gauge/tree_grass01_fever_gauge"
+    ],
+    "evil_tower": [
+        "battle/field/world_evil/evil_tower/background/background",
+        "battle/field/world_evil/evil_tower/foreground/foreground",
+        "battle/field/world_evil/evil_tower/added/added",
+        "(None)",
+        "(None)",
+        "(None)",
+        "(None)",
+        "battle/field_object/world_evil/evil_tower/gate/evil_tower_gate",
+        "battle/field_object/world_evil/evil_tower/transit_pod/evil_tower_transit_pod",
+        "battle/field_object/world_evil/evil_tower/fever_gauge/evil_tower_fever_gauge"
+    ],
+    "evil_tower_top": [
+        "battle/field/world_evil/evil_tower_top/background/background",
+        "battle/field/world_evil/evil_tower_top/foreground/foreground",
+        "battle/field/world_evil/evil_tower_top/added/added",
+        "(None)",
+        "(None)",
+        "(None)",
+        "(None)",
+        "battle/field_object/world_evil/evil_tower_top/gate/evil_tower_top_gate",
+        "battle/field_object/world_evil/evil_tower_top/transit_pod/evil_tower_top_transit_pod",
+        "battle/field_object/world_evil/evil_tower_top/fever_gauge/evil_tower_top_fever_gauge"
+    ],
+    "town_street": [
+        "battle/field/world_town/town_street/background/background",
+        "battle/field/world_town/town_street/foreground/foreground",
+        "(None)",
+        "(None)",
+        "(None)",
+        "(None)",
+        "(None)",
+        "battle/field_object/world_town/town_street/gate/town_street_gate",
+        "battle/field_object/world_town/town_street/transit_pod/town_street_transit_pod",
+        "battle/field_object/world_town/town_street/fever_gauge/town_street_fever_gauge"
+    ]
+}

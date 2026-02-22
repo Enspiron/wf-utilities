@@ -1,0 +1,22 @@
+{
+    "knight": [
+        "battle/action/power_flip/action/knight$knight_lv1",
+        "battle/action/power_flip/action/knight$knight_lv2",
+        "battle/action/power_flip/action/knight$knight_lv3"
+    ],
+    "fighter": [
+        "battle/action/power_flip/action/fighter$fighter_lv1",
+        "battle/action/power_flip/action/fighter$fighter_lv2",
+        "battle/action/power_flip/action/fighter$fighter_lv3"
+    ],
+    "ranged": [
+        "battle/action/power_flip/action/ranged$ranged_lv1",
+        "battle/action/power_flip/action/ranged$ranged_lv2",
+        "battle/action/power_flip/action/ranged$ranged_lv3"
+    ],
+    "supporter": [
+        "battle/action/power_flip/action/supporter$supporter_lv1",
+        "battle/action/power_flip/action/supporter$supporter_lv2",
+        "battle/action/power_flip/action/supporter$supporter_lv3"
+    ]
+}

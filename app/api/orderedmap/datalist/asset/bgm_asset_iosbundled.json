@@ -1,0 +1,114 @@
+{
+    "bgm/tutorial/zero_battle_normal": [
+        "0.35",
+        "156",
+        "0.059206348",
+        "0.059206348",
+        "(None)",
+        "12"
+    ],
+    "bgm/tutorial/zero_battle_tsunagi": [
+        "0.37",
+        "92",
+        "0.07018141",
+        "0.07018141",
+        "(None)",
+        "12"
+    ],
+    "bgm/tutorial/zero_battle_boss": [
+        "0.36",
+        "92",
+        "0.07047619",
+        "0.07047619",
+        "(None)",
+        "12"
+    ],
+    "bgm/tutorial/light_field_normal": [
+        "0.37",
+        "116",
+        "0.06818594",
+        "17.136168",
+        "(None)",
+        "12"
+    ],
+    "bgm/tutorial/light_inteructive_1": [
+        "0.35",
+        "100",
+        "0.051179137",
+        "0.051179137",
+        "(None)",
+        "12"
+    ],
+    "bgm/tutorial/light_inteructive_2": [
+        "0.33",
+        "100",
+        "0.074013606",
+        "0.074013606",
+        "(None)",
+        "12"
+    ],
+    "bgm/tutorial/light_inteructive_3": [
+        "0.38",
+        "200",
+        "0.0707483",
+        "4.8707485",
+        "(None)",
+        "12"
+    ],
+    "bgm/tutorial/light_royal": [
+        "0.25",
+        "90",
+        "0.05825397",
+        "0.05825397",
+        "(None)",
+        "12"
+    ],
+    "bgm/tutorial/title_bg": [
+        "0.46",
+        "80",
+        "0.05648526",
+        "0.05648526",
+        "(None)",
+        "5"
+    ],
+    "bgm/tutorial/town_normal_battle_normal": [
+        "0.4",
+        "158",
+        "0.05260771",
+        "15.241588",
+        "(None)",
+        "12"
+    ],
+    "bgm/common/story/character_story_ending": [
+        "0.3",
+        "60",
+        "0",
+        "0",
+        "(None)",
+        "12"
+    ],
+    "bgm/common/worldflipper_battle_fanfare": [
+        "0.35",
+        "100",
+        "0.07689343",
+        "5.176871",
+        "(None)",
+        "6"
+    ],
+    "bgm/common/story_ending": [
+        "0.4",
+        "175",
+        "0.06394558",
+        "23.377937",
+        "(None)",
+        "12"
+    ],
+    "bgm/common/ambient/ambient_dark_aura_tornado": [
+        "0.09",
+        "60",
+        "0.056462586",
+        "0.056462586",
+        "(None)",
+        "12"
+    ]
+}

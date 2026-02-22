@@ -1,0 +1,92 @@
+{
+    "hard_multi_steam_robot_wind_coffin_count": [
+        "0",
+        "",
+        "1",
+        "10800",
+        "",
+        "1",
+        "0"
+    ],
+    "hard_multi_steam_robot_water": [
+        "2",
+        "1",
+        "0",
+        "",
+        "",
+        "1",
+        "0"
+    ],
+    "hard_multi_steam_robot_light": [
+        "5",
+        "1",
+        "0",
+        "",
+        "",
+        "1",
+        "0"
+    ],
+    "hard_multi_steam_robot_thunder": [
+        "8",
+        "0",
+        "0",
+        "",
+        "",
+        "1",
+        "0"
+    ],
+    "hard_multi_steam_robot_dark": [
+        "2",
+        "0",
+        "0",
+        "",
+        "",
+        "1",
+        "0"
+    ],
+    "hard_multi_steam_robot_wind_constant": [
+        "0",
+        "",
+        "1",
+        "10800",
+        "",
+        "1",
+        "0"
+    ],
+    "hard_multi_steam_robot_water_constant": [
+        "2",
+        "1",
+        "0",
+        "",
+        "",
+        "1",
+        "0"
+    ],
+    "hard_multi_steam_robot_light_constant": [
+        "5",
+        "1",
+        "0",
+        "",
+        "",
+        "1",
+        "0"
+    ],
+    "hard_multi_steam_robot_thunder_constant": [
+        "8",
+        "0",
+        "0",
+        "",
+        "",
+        "1",
+        "0"
+    ],
+    "hard_multi_steam_robot_dark_constant": [
+        "2",
+        "0",
+        "0",
+        "",
+        "",
+        "1",
+        "0"
+    ]
+}

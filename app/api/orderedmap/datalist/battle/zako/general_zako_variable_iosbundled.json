@@ -1,0 +1,30 @@
+{
+    "curse_eye_tutorial": {
+        "100": {
+            "neutral": [
+                "160"
+            ]
+        }
+    },
+    "enemy_eviltower_tutorial": {
+        "100": {
+            "neutral": [
+                "170"
+            ]
+        }
+    },
+    "enemy_demonspider_tutorial": {
+        "100": {
+            "neutral": [
+                "160"
+            ]
+        }
+    },
+    "enemy_evilgiant_tutorial": {
+        "100": {
+            "neutral": [
+                "220"
+            ]
+        }
+    }
+}

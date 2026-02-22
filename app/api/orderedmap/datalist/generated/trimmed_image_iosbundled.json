@@ -1,0 +1,308 @@
+{
+    "character/light/ui/story/angry_b": [
+        "227",
+        "284",
+        "570",
+        "690"
+    ],
+    "character/light/ui/story/base_0": [
+        "96",
+        "88",
+        "570",
+        "690"
+    ],
+    "character/light/ui/story/base_0_b": [
+        "96",
+        "88",
+        "570",
+        "690"
+    ],
+    "character/light/ui/story/normal": [
+        "227",
+        "284",
+        "570",
+        "690"
+    ],
+    "character/light/ui/story/sad": [
+        "227",
+        "284",
+        "570",
+        "690"
+    ],
+    "character/light/ui/story/serious": [
+        "227",
+        "284",
+        "570",
+        "690"
+    ],
+    "character/light/ui/story/surprise": [
+        "227",
+        "284",
+        "570",
+        "690"
+    ],
+    "character/light/ui/story/surprise_b": [
+        "227",
+        "284",
+        "570",
+        "690"
+    ],
+    "character/light_origin/ui/full_shot_1440_1920_0": [
+        "330",
+        "240",
+        "2000",
+        "2000"
+    ],
+    "character/light_origin/ui/skill_cutin_0": [
+        "244",
+        "44",
+        "1024",
+        "512"
+    ],
+    "character/light_origin/ui/full_shot_1440_1920_1": [
+        "0",
+        "0",
+        "1440",
+        "1920"
+    ],
+    "character/light_origin/ui/skill_cutin_1": [
+        "0",
+        "0",
+        "1024",
+        "512"
+    ],
+    "character/light_origin/ui/story/base_0": [
+        "0",
+        "23",
+        "570",
+        "690"
+    ],
+    "character/light_origin/ui/story/normal": [
+        "211",
+        "221",
+        "570",
+        "690"
+    ],
+    "character/maou/ui/story/base": [
+        "0",
+        "0",
+        "570",
+        "690"
+    ],
+    "character/stella/ui/story/base_0": [
+        "76",
+        "47",
+        "570",
+        "690"
+    ],
+    "character/stella/ui/story/base_0_right": [
+        "55",
+        "46",
+        "570",
+        "690"
+    ],
+    "character/stella/ui/story/joy_b": [
+        "212",
+        "279",
+        "570",
+        "690"
+    ],
+    "character/stella/ui/story/normal": [
+        "213",
+        "278",
+        "570",
+        "690"
+    ],
+    "character/stella/ui/story/normal_nohighlight": [
+        "213",
+        "278",
+        "570",
+        "690"
+    ],
+    "character/stella/ui/story/normal_nohighlight_right": [
+        "240",
+        "278",
+        "570",
+        "690"
+    ],
+    "character/stella/ui/story/sad_nohighlight": [
+        "214",
+        "284",
+        "570",
+        "690"
+    ],
+    "character/stella/ui/story/surprise_nohighlight": [
+        "213",
+        "276",
+        "570",
+        "690"
+    ],
+    "character/stella/ui/story/surprise_nohighlight_right": [
+        "240",
+        "276",
+        "570",
+        "690"
+    ],
+    "character/tutorial_alk/ui/full_shot_1440_1920_0": [
+        "542",
+        "226",
+        "2000",
+        "2000"
+    ],
+    "character/tutorial_alk/ui/skill_cutin_0": [
+        "499",
+        "44",
+        "1024",
+        "512"
+    ],
+    "character/tutorial_alk/ui/full_shot_1440_1920_1": [
+        "226",
+        "218",
+        "2000",
+        "2000"
+    ],
+    "character/tutorial_alk/ui/skill_cutin_1": [
+        "271",
+        "26",
+        "1024",
+        "512"
+    ],
+    "character/tutorial_alk/ui/story/akire_right": [
+        "243",
+        "250",
+        "570",
+        "690"
+    ],
+    "character/tutorial_alk/ui/story/angry_right": [
+        "242",
+        "261",
+        "570",
+        "690"
+    ],
+    "character/tutorial_alk/ui/story/base_0_right": [
+        "35",
+        "45",
+        "570",
+        "690"
+    ],
+    "character/tutorial_alk/ui/story/joy_right": [
+        "241",
+        "249",
+        "570",
+        "690"
+    ],
+    "character/tutorial_alk/ui/story/nigawarai_right": [
+        "241",
+        "248",
+        "570",
+        "690"
+    ],
+    "character/tutorial_alk/ui/story/normal_right": [
+        "241",
+        "249",
+        "570",
+        "690"
+    ],
+    "character/tutorial_alk/ui/story/pain_right": [
+        "242",
+        "254",
+        "570",
+        "690"
+    ],
+    "character/tutorial_alk/ui/story/sad_right": [
+        "242",
+        "254",
+        "570",
+        "690"
+    ],
+    "character/tutorial_alk/ui/story/serious_right": [
+        "241",
+        "249",
+        "570",
+        "690"
+    ],
+    "character/tutorial_alk/ui/story/smile_right": [
+        "241",
+        "249",
+        "570",
+        "690"
+    ],
+    "character/tutorial_alk/ui/story/surprise_d_right": [
+        "243",
+        "237",
+        "570",
+        "690"
+    ],
+    "character/tutorial_alk/ui/story/surprise_e_right": [
+        "243",
+        "239",
+        "570",
+        "690"
+    ],
+    "character/tutorial_alk/ui/story/surprise_right": [
+        "241",
+        "245",
+        "570",
+        "690"
+    ],
+    "character/tutorial_priest/ui/full_shot_1440_1920_0": [
+        "288",
+        "279",
+        "2000",
+        "2000"
+    ],
+    "character/tutorial_priest/ui/skill_cutin_0": [
+        "426",
+        "18",
+        "1024",
+        "512"
+    ],
+    "character/tutorial_priest/ui/full_shot_1440_1920_1": [
+        "0",
+        "0",
+        "1440",
+        "1920"
+    ],
+    "character/tutorial_priest/ui/skill_cutin_1": [
+        "0",
+        "0",
+        "1024",
+        "512"
+    ],
+    "character/tutorial_priest/ui/story/base_0": [
+        "4",
+        "21",
+        "570",
+        "690"
+    ],
+    "character/tutorial_witch/ui/full_shot_1440_1920_0": [
+        "602",
+        "204",
+        "2000",
+        "2000"
+    ],
+    "character/tutorial_witch/ui/skill_cutin_0": [
+        "362",
+        "0",
+        "1024",
+        "512"
+    ],
+    "character/tutorial_witch/ui/full_shot_1440_1920_1": [
+        "0",
+        "0",
+        "1440",
+        "1920"
+    ],
+    "character/tutorial_witch/ui/skill_cutin_1": [
+        "0",
+        "0",
+        "1024",
+        "512"
+    ],
+    "character/tutorial_witch/ui/story/base_0": [
+        "23",
+        "0",
+        "570",
+        "690"
+    ]
+}

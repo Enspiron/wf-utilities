@@ -1,0 +1,32 @@
+{
+    "maou_tutorial": [
+        "1",
+        "fix_hp_always_multiple_one",
+        "",
+        "",
+        "",
+        "55000",
+        "1",
+        "atk_basic_normal",
+        "1.5",
+        "0.16",
+        "atk_correction_normal",
+        "tp_basic_normal",
+        "9"
+    ],
+    "evil_tutorial": [
+        "0",
+        "hit_hp_basic_normal",
+        "5",
+        "1",
+        "hit_hp_correction_normal",
+        "",
+        "",
+        "atk_basic_normal",
+        "14",
+        "1",
+        "atk_correction_normal",
+        "tp_basic_normal",
+        "3"
+    ]
+}

@@ -1,0 +1,44 @@
+{
+    "light_royal": [
+        "2",
+        "",
+        "bgm/tutorial/light_royal",
+        "(None)",
+        "(None)"
+    ],
+    "light_field": [
+        "2",
+        "",
+        "bgm/tutorial/light_field_normal",
+        "(None)",
+        "(None)"
+    ],
+    "light_boss": [
+        "2",
+        "",
+        "bgm/tutorial/zero_battle_normal",
+        "bgm/tutorial/zero_battle_tsunagi",
+        "bgm/tutorial/zero_battle_boss"
+    ],
+    "light_inteructive": [
+        "2",
+        "",
+        "bgm/tutorial/light_inteructive_3",
+        "(None)",
+        "(None)"
+    ],
+    "town_normal_battle": [
+        "2",
+        "",
+        "bgm/tutorial/town_normal_battle_normal",
+        "(None)",
+        "(None)"
+    ],
+    "zero_battle_normal": [
+        "2",
+        "",
+        "bgm/tutorial/zero_battle_normal",
+        "(None)",
+        "(None)"
+    ]
+}
