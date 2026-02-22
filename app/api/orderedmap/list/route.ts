@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       const path = await import('path');
       
       const dataFolder = lang === 'en' ? 'datalist_en' : 'datalist';
-      const orderedmapDir = path.join(process.cwd(), 'app', 'api', 'orderedmap', dataFolder);
+      const orderedmapDir = path.join(process.cwd(), 'public', 'data', dataFolder);
       const categories = fs.readdirSync(orderedmapDir, { withFileTypes: true })
         .filter(dirent => dirent.isDirectory())
         .map(dirent => dirent.name);
