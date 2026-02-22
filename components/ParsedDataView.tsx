@@ -396,9 +396,9 @@ export default function ParsedDataView({ items, category, file, dataSource, pixe
                               <div className="flex items-center gap-1 mb-1">
                                 <span className="text-xs font-semibold text-muted-foreground">Asset URL:</span>
                                 {hasAsset ? (
-                                  <CheckCircle2 className="h-3 w-3 text-green-500" title="Loaded successfully" />
+                                  <CheckCircle2 className="h-3 w-3 text-green-500" />
                                 ) : (
-                                  <XCircle className="h-3 w-3 text-red-500" title="Failed to load" />
+                                  <XCircle className="h-3 w-3 text-red-500" />
                                 )}
                               </div>
                               <p className="text-xs font-mono text-foreground break-all">{assetUrl}</p>
