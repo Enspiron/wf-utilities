@@ -1,0 +1,5 @@
+# Tell Next.js File Tracing to ignore data directories
+# But Vercel will still deploy them
+**/orderedmap/datalist
+**/orderedmap/datalist_en
+
