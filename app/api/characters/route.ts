@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { parseCharacterData } from '@/lib/character-parser';
 
 const USE_CDN = process.env.VERCEL === '1';
-const CDN_BASE_URL = 'https://wfjukebox.b-cdn.net/data';
+const CDN_BASE_URL = 'https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data';
 
 export async function GET(request: Request) {
   try {

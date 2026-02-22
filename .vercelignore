@@ -1,3 +1,3 @@
-# Exclude local data - production uses CDN
+# Exclude data from Vercel deployment - production fetches from GitHub
 public/data
 
