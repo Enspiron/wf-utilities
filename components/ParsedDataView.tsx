@@ -519,9 +519,9 @@ export default function ParsedDataView({ items, category, file, dataSource, pixe
                       {assetUrl && (
                         <div className="shrink-0">
                           {hasAsset ? (
-                            <CheckCircle2 className="h-5 w-5 text-green-500" title="Asset loaded" />
+                            <CheckCircle2 className="h-5 w-5 text-green-500" />
                           ) : (
-                            <XCircle className="h-5 w-5 text-red-500" title="Asset failed" />
+                            <XCircle className="h-5 w-5 text-red-500" />
                           )}
                         </div>
                       )}
