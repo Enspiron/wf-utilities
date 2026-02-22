@@ -1,0 +1,57 @@
+{
+    "Human": [
+        "人",
+        "scene/general/sprite_sheet/vector_icon-assets/race_human_medium",
+        "race_human"
+    ],
+    "Beast": [
+        "獣",
+        "scene/general/sprite_sheet/vector_icon-assets/race_beast_medium",
+        "race_beast"
+    ],
+    "Mystery": [
+        "妖",
+        "scene/general/sprite_sheet/vector_icon-assets/race_mystery_medium",
+        "race_mystery"
+    ],
+    "Element": [
+        "精霊",
+        "scene/general/sprite_sheet/vector_icon-assets/race_element_medium",
+        "race_element"
+    ],
+    "Dragon": [
+        "ドラゴン",
+        "scene/general/sprite_sheet/vector_icon-assets/race_dragon_medium",
+        "race_dragon"
+    ],
+    "Machine": [
+        "機械",
+        "scene/general/sprite_sheet/vector_icon-assets/race_machine_medium",
+        "race_machine"
+    ],
+    "Devil": [
+        "魔",
+        "scene/general/sprite_sheet/vector_icon-assets/race_devil_medium",
+        "race_devil"
+    ],
+    "Plants": [
+        "植物",
+        "scene/general/sprite_sheet/vector_icon-assets/race_plants_medium",
+        "race_plants"
+    ],
+    "Aquatic": [
+        "水棲",
+        "scene/general/sprite_sheet/vector_icon-assets/race_aquatic_medium",
+        "race_aquatic"
+    ],
+    "Undead": [
+        "不死",
+        "scene/general/sprite_sheet/vector_icon-assets/race_undead_medium",
+        "race_undead"
+    ],
+    "Breakableblock": [
+        "破壊可能障害物",
+        "scene/general/sprite_sheet/vector_icon-assets/race_human_medium",
+        "race_human"
+    ]
+}

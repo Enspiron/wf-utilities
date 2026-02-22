@@ -1,0 +1,27 @@
+{
+    "tutorial_1": [
+        "light_castle_throne",
+        "battle/terrain/tutorial/tutorial_01_01_01",
+        "tutorial_1"
+    ],
+    "tutorial_3": [
+        "evil_tower",
+        "battle/terrain/tutorial/tutorial_01_01_02",
+        "tutorial_3"
+    ],
+    "tutorial_4": [
+        "evil_tower",
+        "battle/terrain/tutorial/tutorial_01_01_03",
+        "tutorial_4"
+    ],
+    "tutorial_5": [
+        "evil_tower_top",
+        "battle/terrain/tutorial/tutorial_01_01_04",
+        "tutorial_5"
+    ],
+    "tutorial_8": [
+        "town_street",
+        "battle/terrain/tutorial/tutorial_01_01_05",
+        "tutorial_8"
+    ]
+}

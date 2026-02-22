@@ -1,0 +1,162 @@
+// Character parser for WF character data
+
+export interface Character {
+  id: string;
+  faceCode: string;
+  // From character.json (array indices)
+  attribute: string; // [1]: 1=Fire, 2=Water, 3=Wind, 4=Thunder, 5=Light, 6=Dark
+  rarity: string; // [3]: 0-5 (0-indexed, so add 1 for actual rarity)
+  race: string; // [4]
+  weaponType: string; // [6]: 0=Slash, 1=Strike, 2=Thrust, 3=Shot (0-indexed)
+  gender: string; // [7]
+  stance: string; // [26]: Balance, Attacker, Tank, etc.
+  
+  // From character_text.json (array indices)
+  nameJP: string; // [0]
+  nameEN?: string; // from datalist_en
+  subNameJP: string; // [1]
+  subNameEN?: string;
+  description: string; // [2]
+  title: string; // [3]
+  skillName: string; // [4]
+  skillDescription: string; // [5]
+  leaderAbilityName: string; // [8]
+  voiceActor: string; // [9]
+}
+
+export interface CharacterFilters {
+  attribute?: string;
+  weaponType?: string;
+  race?: string;
+  gender?: string;
+  rarity?: string;
+  stance?: string;
+  search?: string;
+  voiceActor?: string;
+}
+
+const attributeNames: { [key: string]: string } = {
+  '1': 'Fire',
+  '2': 'Water',
+  '3': 'Wind',
+  '4': 'Thunder',
+  '5': 'Light',
+  '6': 'Dark',
+};
+
+const weaponNames: { [key: string]: string } = {
+  '0': 'Slash',
+  '1': 'Strike',
+  '2': 'Thrust',
+  '3': 'Shot',
+};
+
+export function parseCharacterData(
+  characterData: Record<string, unknown[]>,
+  characterTextData: Record<string, unknown[]>,
+  characterTextDataEN?: Record<string, unknown[]>
+): Character[] {
+  const characters: Character[] = [];
+
+  for (const [id, data] of Object.entries(characterData)) {
+    const textData = characterTextData[id];
+    const textDataEN = characterTextDataEN?.[id];
+    
+    if (!textData || !Array.isArray(data)) continue;
+
+    const character: Character = {
+      id,
+      faceCode: String(data[0] || ''),
+      attribute: attributeNames[String(data[1])] || String(data[1]),
+      rarity: String((parseInt(String(data[3])) || 0) + 1),
+      race: String(data[4] || ''),
+      weaponType: weaponNames[String(data[6])] || String(data[6]),
+      gender: String(data[7] || ''),
+      stance: String(data[26] || ''),
+      nameJP: String(textData[0] || ''),
+      nameEN: textDataEN ? String(textDataEN[0] || '') : undefined,
+      subNameJP: String(textData[1] || ''),
+      subNameEN: textDataEN ? String(textDataEN[1] || '') : undefined,
+      description: String(textData[2] || ''),
+      title: String(textData[3] || ''),
+      skillName: String(textData[4] || ''),
+      skillDescription: String(textData[5] || ''),
+      leaderAbilityName: String(textData[8] || ''),
+      voiceActor: String(textData[9] || ''),
+    };
+
+    characters.push(character);
+  }
+
+  return characters;
+}
+
+export function filterCharacters(
+  characters: Character[],
+  filters: CharacterFilters
+): Character[] {
+  return characters.filter((char) => {
+    if (filters.attribute && char.attribute !== filters.attribute) return false;
+    if (filters.weaponType && char.weaponType !== filters.weaponType) return false;
+    if (filters.race && !char.race.includes(filters.race)) return false;
+    if (filters.gender && char.gender !== filters.gender) return false;
+    if (filters.rarity && char.rarity !== filters.rarity) return false;
+    if (filters.stance && char.stance !== filters.stance) return false;
+    if (filters.voiceActor && !char.voiceActor.includes(filters.voiceActor)) return false;
+    
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      const matchesJP = char.nameJP.toLowerCase().includes(searchLower) ||
+        char.subNameJP.toLowerCase().includes(searchLower) ||
+        char.title.toLowerCase().includes(searchLower) ||
+        char.faceCode.toLowerCase().includes(searchLower);
+      const matchesEN = char.nameEN?.toLowerCase().includes(searchLower) ||
+        char.subNameEN?.toLowerCase().includes(searchLower);
+      
+      if (!matchesJP && !matchesEN) return false;
+    }
+
+    return true;
+  });
+}
+
+export function searchCharacters(
+  characters: Character[],
+  searchTerm: string
+): Character[] {
+  if (!searchTerm) return characters;
+  
+  const term = searchTerm.toLowerCase();
+  
+  return characters.filter((char) =>
+    char.nameJP.toLowerCase().includes(term) ||
+    char.nameEN?.toLowerCase().includes(term) ||
+    char.subNameJP.toLowerCase().includes(term) ||
+    char.subNameEN?.toLowerCase().includes(term) ||
+    char.title.toLowerCase().includes(term) ||
+    char.faceCode.toLowerCase().includes(term) ||
+    char.voiceActor.toLowerCase().includes(term) ||
+    char.skillName.toLowerCase().includes(term)
+  );
+}
+
+export function getUniqueValues(
+  characters: Character[],
+  field: keyof Character
+): string[] {
+  const values = new Set<string>();
+  
+  characters.forEach((char) => {
+    const value = char[field];
+    if (value && typeof value === 'string') {
+      // Handle comma-separated values (like races)
+      if (value.includes(',')) {
+        value.split(',').forEach(v => values.add(v.trim()));
+      } else {
+        values.add(value);
+      }
+    }
+  });
+  
+  return Array.from(values).filter(v => v && v !== '(None)' && v !== '').sort();
+}

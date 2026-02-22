@@ -1,0 +1,28 @@
+{
+    "tutorial_king": [
+        "battle/field_object/common/yakumono/skill_invoker/npc/skill_invoker_tutorial_king/skill_invoker_tutorial_king",
+        "0.03",
+        "5",
+        "60",
+        "tutorial_king",
+        "0",
+        "(None)",
+        "(None)",
+        "",
+        "",
+        "tutorial"
+    ],
+    "tutorial_princess": [
+        "battle/field_object/common/yakumono/skill_invoker/npc/skill_invoker_tutorial_princess/skill_invoker_tutorial_princess",
+        "0.03",
+        "5",
+        "60",
+        "tutorial_princess",
+        "0",
+        "(None)",
+        "(None)",
+        "",
+        "",
+        "tutorial"
+    ]
+}

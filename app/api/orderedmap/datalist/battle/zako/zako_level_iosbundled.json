@@ -1,0 +1,62 @@
+{
+    "curse_eye_tutorial": [
+        "1",
+        "fix_hp_tutorial_normal",
+        "",
+        "",
+        "",
+        "15",
+        "1",
+        "atk_basic_normal",
+        "14",
+        "1",
+        "atk_correction_normal",
+        "tp_basic_normal",
+        "6"
+    ],
+    "enemy_demonspider_tutorial": [
+        "1",
+        "fix_hp_tutorial",
+        "",
+        "",
+        "",
+        "1000",
+        "1",
+        "atk_basic_normal",
+        "18",
+        "1",
+        "atk_correction_normal",
+        "tp_basic_normal",
+        "6"
+    ],
+    "enemy_eviltower_tutorial": [
+        "1",
+        "fix_hp_tutorial",
+        "",
+        "",
+        "",
+        "13000",
+        "1",
+        "atk_basic_normal",
+        "12",
+        "1",
+        "atk_correction_normal",
+        "tp_basic_normal",
+        "6"
+    ],
+    "enemy_evilgiant_tutorial": [
+        "1",
+        "fix_hp_tutorial",
+        "",
+        "",
+        "",
+        "1800",
+        "1",
+        "atk_basic_normal",
+        "8",
+        "1",
+        "atk_correction_normal",
+        "tp_basic_normal",
+        "6"
+    ]
+}
