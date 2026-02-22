@@ -10,9 +10,9 @@ export async function GET(request: Request) {
     const lang = searchParams.get('lang') || 'jp';
     
     if (USE_MANIFEST) {
-      // In production, return a pre-cached structure
-      // You'll need to generate this manifest file before deployment
-      const manifestUrl = `https://wfjukebox.b-cdn.net/data/manifest_${lang}.json`;
+      // In production, fetch from GitHub and build manifest dynamically
+      // Note: This is a placeholder - we'll generate manifests separately
+      const manifestUrl = `https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data/manifest_${lang}.json`;
       const response = await fetch(manifestUrl, { next: { revalidate: 3600 } });
       
       if (!response.ok) {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // Use CDN for production, local files for development
 const USE_CDN = process.env.VERCEL === '1';
-const CDN_BASE_URL = 'https://wfjukebox.b-cdn.net/data';
+const CDN_BASE_URL = 'https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data';
 
 export async function GET(request: NextRequest) {
   try {
