@@ -1,15 +1,13 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import Link from 'next/link';
-import { Search, FileJson, Folder, ChevronRight, Grid3x3, FileCode, Home as HomeFolder, Loader2, Home, ArrowLeft, FolderOpen, List, Languages } from 'lucide-react';
+import { Search, FileJson, Folder, ChevronRight, Grid3x3, FileCode, Home as HomeFolder, Loader2, ArrowLeft, FolderOpen, List, Languages, Music, Image as ImageIcon, FileText } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { ThemeToggle } from '@/components/theme-toggle';
 import ParsedDataView from '@/components/ParsedDataView';
 import { parseOrderedMapJson } from '@/lib/json-parser';
 import {
@@ -49,8 +47,8 @@ export default function OrderedMapExplorer() {
 
   const parsedItems = useMemo(() => {
     if (!fileData?.data) return [];
-    return parseOrderedMapJson(fileData.data);
-  }, [fileData]);
+    return parseOrderedMapJson(fileData.data, currentLocation.type === 'file' ? currentLocation.category : undefined);
+  }, [fileData, currentLocation]);
 
   useEffect(() => {
     fetchFileList();
@@ -110,12 +108,81 @@ export default function OrderedMapExplorer() {
     setFileData(null);
   };
 
+  const getCategoryType = useCallback((category: string): 'audio' | 'image' | 'data' => {
+    // Audio-related: only the asset folder contains audio configuration files
+    if (category === 'asset') {
+      return 'audio';
+    }
+    
+    // Image-related: categories that contain image/sprite paths
+    const imageCategories = [
+      'character', 'character_ui', 'town', 'feature_banner', 'encyclopedia',
+      'degree', 'item', 'equipment_enhancement', 'shop', 'battle', 
+      'tips', 'skill_preview', 'gacha', 'quest', 'story', 'stance_detail',
+      'news', 'help', 'rich_text', 'bonus'
+    ];
+    
+    if (imageCategories.includes(category)) {
+      return 'image';
+    }
+    
+    // Pure data: no asset references (achievements, missions, config, etc.)
+    return 'data';
+  }, []);
+
+  const getCategoryIcon = useCallback((category: string) => {
+    const type = getCategoryType(category);
+    switch (type) {
+      case 'audio':
+        return <Music className="h-4 w-4" />;
+      case 'image':
+        return <ImageIcon className="h-4 w-4" />;
+      default:
+        return <FileText className="h-4 w-4" />;
+    }
+  }, [getCategoryType]);
+
+  const getCategoryBadge = useCallback((category: string) => {
+    const type = getCategoryType(category);
+    const colors = {
+      audio: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+      image: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+      data: 'bg-gray-500/10 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-800',
+    };
+    const labels = {
+      audio: 'Audio',
+      image: 'Images',
+      data: 'Data',
+    };
+    return (
+      <Badge variant="outline" className={`text-xs ${colors[type]}`}>
+        {labels[type]}
+      </Badge>
+    );
+  }, [getCategoryType]);
+
   const filteredCategories = useMemo(() => {
     if (!searchTerm) return categories;
     return categories.filter(cat =>
       cat.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [categories, searchTerm]);
+
+  // Group categories by type
+  const groupedCategories = useMemo(() => {
+    const groups = {
+      audio: [] as string[],
+      image: [] as string[],
+      data: [] as string[],
+    };
+    
+    filteredCategories.forEach(cat => {
+      const type = getCategoryType(cat);
+      groups[type].push(cat);
+    });
+    
+    return groups;
+  }, [filteredCategories, getCategoryType]);
 
   const filteredFiles = useMemo(() => {
     if (currentLocation.type !== 'folder') return [];
@@ -154,11 +221,6 @@ export default function OrderedMapExplorer() {
       {/* Toolbar */}
       <div className="border-b border-border bg-card px-4 py-3">
         <div className="flex items-center gap-2">
-          <Link href="/">
-            <Button variant="ghost" size="icon" title="Home Page">
-              <Home className="h-4 w-4" />
-            </Button>
-          </Link>
           <Button
             variant="ghost"
             size="icon"
@@ -224,7 +286,6 @@ export default function OrderedMapExplorer() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <ThemeToggle />
         </div>
       </div>
 
@@ -293,58 +354,284 @@ export default function OrderedMapExplorer() {
                 Categories ({filteredCategories.length})
               </h2>
               {browseLayout === 'grid' ? (
-                <div className="grid gap-4" style={{gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 120px))'}}>
-                  {filteredCategories.map((category) => (
-                    <TooltipProvider key={category}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            className="flex flex-col items-center gap-2 p-3 rounded-md hover:bg-accent transition-colors group w-[120px]"
-                            onClick={() => navigateToFolder(category)}
-                            onDoubleClick={() => navigateToFolder(category)}
-                          >
-                            <Folder className="h-16 w-16 text-amber-500 group-hover:text-amber-400 transition-colors" />
-                            <div className="w-full text-center">
-                              <span className="text-xs font-medium w-full block truncate px-1 leading-tight">{category}</span>
-                              <Badge variant="secondary" className="text-[10px] h-4 px-1.5 mt-1">
-                                {filesByCategory[category]?.length || 0}
-                              </Badge>
-                            </div>
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{category}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  ))}
+                <div className="space-y-8">
+                  {/* Audio Section */}
+                  {groupedCategories.audio.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3 px-2">
+                        <Music className="h-4 w-4 text-purple-500" />
+                        <h3 className="text-sm font-semibold text-purple-600 dark:text-purple-400">
+                          Audio ({groupedCategories.audio.length})
+                        </h3>
+                      </div>
+                      <div className="grid gap-4" style={{gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 120px))'}}>
+                        {groupedCategories.audio.map((category) => (
+                          <TooltipProvider key={category}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  className="flex flex-col items-center gap-2 p-3 rounded-md hover:bg-accent transition-colors group w-[120px]"
+                                  onClick={() => navigateToFolder(category)}
+                                  onDoubleClick={() => navigateToFolder(category)}
+                                >
+                                  <div className="relative">
+                                    <Folder className="h-16 w-16 text-amber-500 group-hover:text-amber-400 transition-colors" />
+                                    <div className="absolute bottom-0 right-0 bg-background rounded-full p-1 shadow-sm">
+                                      {getCategoryIcon(category)}
+                                    </div>
+                                  </div>
+                                  <div className="w-full text-center space-y-1">
+                                    <span className="text-xs font-medium w-full block truncate px-1 leading-tight">{category}</span>
+                                    <div className="flex items-center justify-center gap-1">
+                                      {getCategoryBadge(category)}
+                                      <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                                        {filesByCategory[category]?.length || 0}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{category}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Images Section */}
+                  {groupedCategories.image.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3 px-2">
+                        <ImageIcon className="h-4 w-4 text-blue-500" />
+                        <h3 className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                          Images ({groupedCategories.image.length})
+                        </h3>
+                      </div>
+                      <div className="grid gap-4" style={{gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 120px))'}}>
+                        {groupedCategories.image.map((category) => (
+                          <TooltipProvider key={category}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  className="flex flex-col items-center gap-2 p-3 rounded-md hover:bg-accent transition-colors group w-[120px]"
+                                  onClick={() => navigateToFolder(category)}
+                                  onDoubleClick={() => navigateToFolder(category)}
+                                >
+                                  <div className="relative">
+                                    <Folder className="h-16 w-16 text-amber-500 group-hover:text-amber-400 transition-colors" />
+                                    <div className="absolute bottom-0 right-0 bg-background rounded-full p-1 shadow-sm">
+                                      {getCategoryIcon(category)}
+                                    </div>
+                                  </div>
+                                  <div className="w-full text-center space-y-1">
+                                    <span className="text-xs font-medium w-full block truncate px-1 leading-tight">{category}</span>
+                                    <div className="flex items-center justify-center gap-1">
+                                      {getCategoryBadge(category)}
+                                      <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                                        {filesByCategory[category]?.length || 0}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{category}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Data Section */}
+                  {groupedCategories.data.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3 px-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <h3 className="text-sm font-semibold text-muted-foreground">
+                          Data ({groupedCategories.data.length})
+                        </h3>
+                      </div>
+                      <div className="grid gap-4" style={{gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 120px))'}}>
+                        {groupedCategories.data.map((category) => (
+                          <TooltipProvider key={category}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  className="flex flex-col items-center gap-2 p-3 rounded-md hover:bg-accent transition-colors group w-[120px]"
+                                  onClick={() => navigateToFolder(category)}
+                                  onDoubleClick={() => navigateToFolder(category)}
+                                >
+                                  <div className="relative">
+                                    <Folder className="h-16 w-16 text-amber-500 group-hover:text-amber-400 transition-colors" />
+                                    <div className="absolute bottom-0 right-0 bg-background rounded-full p-1 shadow-sm">
+                                      {getCategoryIcon(category)}
+                                    </div>
+                                  </div>
+                                  <div className="w-full text-center space-y-1">
+                                    <span className="text-xs font-medium w-full block truncate px-1 leading-tight">{category}</span>
+                                    <div className="flex items-center justify-center gap-1">
+                                      {getCategoryBadge(category)}
+                                      <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                                        {filesByCategory[category]?.length || 0}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{category}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="space-y-1">
-                  {filteredCategories.map((category) => (
-                    <TooltipProvider key={category}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            className="flex items-center gap-3 p-3 rounded-md hover:bg-accent transition-colors w-full text-left group"
-                            onClick={() => navigateToFolder(category)}
-                            onDoubleClick={() => navigateToFolder(category)}
-                          >
-                            <Folder className="h-8 w-8 text-amber-500 group-hover:text-amber-400 transition-colors flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <span className="text-sm font-medium block truncate">{category}</span>
-                            </div>
-                            <Badge variant="secondary" className="text-xs px-2 flex-shrink-0">
-                              {filesByCategory[category]?.length || 0}
-                            </Badge>
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{category}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  ))}
+                <div className="space-y-6">
+                  {/* Audio Section */}
+                  {groupedCategories.audio.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2 px-2">
+                        <Music className="h-4 w-4 text-purple-500" />
+                        <h3 className="text-sm font-semibold text-purple-600 dark:text-purple-400">
+                          Audio ({groupedCategories.audio.length})
+                        </h3>
+                      </div>
+                      <div className="space-y-1">
+                        {groupedCategories.audio.map((category) => (
+                          <TooltipProvider key={category}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  className="flex items-center gap-3 p-3 rounded-md hover:bg-accent transition-colors w-full text-left group"
+                                  onClick={() => navigateToFolder(category)}
+                                  onDoubleClick={() => navigateToFolder(category)}
+                                >
+                                  <div className="relative">
+                                    <Folder className="h-8 w-8 text-amber-500 group-hover:text-amber-400 transition-colors flex-shrink-0" />
+                                    <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5 shadow-sm">
+                                      {getCategoryIcon(category)}
+                                    </div>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <span className="text-sm font-medium block truncate">{category}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    {getCategoryBadge(category)}
+                                    <Badge variant="secondary" className="text-xs px-2">
+                                      {filesByCategory[category]?.length || 0}
+                                    </Badge>
+                                  </div>
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{category}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Images Section */}
+                  {groupedCategories.image.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2 px-2">
+                        <ImageIcon className="h-4 w-4 text-blue-500" />
+                        <h3 className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                          Images ({groupedCategories.image.length})
+                        </h3>
+                      </div>
+                      <div className="space-y-1">
+                        {groupedCategories.image.map((category) => (
+                          <TooltipProvider key={category}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  className="flex items-center gap-3 p-3 rounded-md hover:bg-accent transition-colors w-full text-left group"
+                                  onClick={() => navigateToFolder(category)}
+                                  onDoubleClick={() => navigateToFolder(category)}
+                                >
+                                  <div className="relative">
+                                    <Folder className="h-8 w-8 text-amber-500 group-hover:text-amber-400 transition-colors flex-shrink-0" />
+                                    <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5 shadow-sm">
+                                      {getCategoryIcon(category)}
+                                    </div>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <span className="text-sm font-medium block truncate">{category}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    {getCategoryBadge(category)}
+                                    <Badge variant="secondary" className="text-xs px-2">
+                                      {filesByCategory[category]?.length || 0}
+                                    </Badge>
+                                  </div>
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{category}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Data Section */}
+                  {groupedCategories.data.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2 px-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <h3 className="text-sm font-semibold text-muted-foreground">
+                          Data ({groupedCategories.data.length})
+                        </h3>
+                      </div>
+                      <div className="space-y-1">
+                        {groupedCategories.data.map((category) => (
+                          <TooltipProvider key={category}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  className="flex items-center gap-3 p-3 rounded-md hover:bg-accent transition-colors w-full text-left group"
+                                  onClick={() => navigateToFolder(category)}
+                                  onDoubleClick={() => navigateToFolder(category)}
+                                >
+                                  <div className="relative">
+                                    <Folder className="h-8 w-8 text-amber-500 group-hover:text-amber-400 transition-colors flex-shrink-0" />
+                                    <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5 shadow-sm">
+                                      {getCategoryIcon(category)}
+                                    </div>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <span className="text-sm font-medium block truncate">{category}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    {getCategoryBadge(category)}
+                                    <Badge variant="secondary" className="text-xs px-2">
+                                      {filesByCategory[category]?.length || 0}
+                                    </Badge>
+                                  </div>
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{category}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {filteredCategories.length === 0 && (

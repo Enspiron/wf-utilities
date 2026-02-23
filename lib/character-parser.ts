@@ -16,12 +16,25 @@ export interface Character {
   nameEN?: string; // from datalist_en
   subNameJP: string; // [1]
   subNameEN?: string;
-  description: string; // [2]
-  title: string; // [3]
-  skillName: string; // [4]
-  skillDescription: string; // [5]
-  leaderAbilityName: string; // [8]
-  voiceActor: string; // [9]
+  descriptionJP: string; // [2]
+  descriptionEN?: string;
+  titleJP: string; // [3]
+  titleEN?: string;
+  skillNameJP: string; // [4]
+  skillNameEN?: string;
+  skillDescriptionJP: string; // [5]
+  skillDescriptionEN?: string;
+  leaderAbilityNameJP: string; // [8]
+  leaderAbilityNameEN?: string;
+  voiceActorJP: string; // [9]
+  voiceActorEN?: string;
+  // Legacy fields for backwards compatibility
+  description: string;
+  title: string;
+  skillName: string;
+  skillDescription: string;
+  leaderAbilityName: string;
+  voiceActor: string;
 }
 
 export interface CharacterFilters {
@@ -77,6 +90,19 @@ export function parseCharacterData(
       nameEN: textDataEN ? String(textDataEN[0] || '') : undefined,
       subNameJP: String(textData[1] || ''),
       subNameEN: textDataEN ? String(textDataEN[1] || '') : undefined,
+      descriptionJP: String(textData[2] || ''),
+      descriptionEN: textDataEN ? String(textDataEN[2] || '') : undefined,
+      titleJP: String(textData[3] || ''),
+      titleEN: textDataEN ? String(textDataEN[3] || '') : undefined,
+      skillNameJP: String(textData[4] || ''),
+      skillNameEN: textDataEN ? String(textDataEN[4] || '') : undefined,
+      skillDescriptionJP: String(textData[5] || ''),
+      skillDescriptionEN: textDataEN ? String(textDataEN[5] || '') : undefined,
+      leaderAbilityNameJP: String(textData[8] || ''),
+      leaderAbilityNameEN: textDataEN ? String(textDataEN[8] || '') : undefined,
+      voiceActorJP: String(textData[9] || ''),
+      voiceActorEN: textDataEN ? String(textDataEN[9] || '') : undefined,
+      // Legacy fields for backwards compatibility
       description: String(textData[2] || ''),
       title: String(textData[3] || ''),
       skillName: String(textData[4] || ''),
@@ -102,16 +128,17 @@ export function filterCharacters(
     if (filters.gender && char.gender !== filters.gender) return false;
     if (filters.rarity && char.rarity !== filters.rarity) return false;
     if (filters.stance && char.stance !== filters.stance) return false;
-    if (filters.voiceActor && !char.voiceActor.includes(filters.voiceActor)) return false;
+    if (filters.voiceActor && !char.voiceActorJP.includes(filters.voiceActor)) return false;
     
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       const matchesJP = char.nameJP.toLowerCase().includes(searchLower) ||
         char.subNameJP.toLowerCase().includes(searchLower) ||
-        char.title.toLowerCase().includes(searchLower) ||
+        char.titleJP.toLowerCase().includes(searchLower) ||
         char.faceCode.toLowerCase().includes(searchLower);
       const matchesEN = char.nameEN?.toLowerCase().includes(searchLower) ||
-        char.subNameEN?.toLowerCase().includes(searchLower);
+        char.subNameEN?.toLowerCase().includes(searchLower) ||
+        char.titleEN?.toLowerCase().includes(searchLower);
       
       if (!matchesJP && !matchesEN) return false;
     }
@@ -133,10 +160,15 @@ export function searchCharacters(
     char.nameEN?.toLowerCase().includes(term) ||
     char.subNameJP.toLowerCase().includes(term) ||
     char.subNameEN?.toLowerCase().includes(term) ||
-    char.title.toLowerCase().includes(term) ||
+    char.titleJP.toLowerCase().includes(term) ||
+    char.titleEN?.toLowerCase().includes(term) ||
+    char.descriptionJP.toLowerCase().includes(term) ||
+    char.descriptionEN?.toLowerCase().includes(term) ||
     char.faceCode.toLowerCase().includes(term) ||
-    char.voiceActor.toLowerCase().includes(term) ||
-    char.skillName.toLowerCase().includes(term)
+    char.voiceActorJP.toLowerCase().includes(term) ||
+    char.voiceActorEN?.toLowerCase().includes(term) ||
+    char.skillNameJP.toLowerCase().includes(term) ||
+    char.skillNameEN?.toLowerCase().includes(term)
   );
 }
 

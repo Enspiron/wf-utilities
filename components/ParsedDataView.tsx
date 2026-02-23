@@ -87,7 +87,7 @@ export default function ParsedDataView({ items, category, file, dataSource, pixe
       
       if (data.data) {
         const parser = await import('@/lib/json-parser');
-        const enItems = parser.parseOrderedMapJson(data.data);
+        const enItems = parser.parseOrderedMapJson(data.data, category);
         const enItem = enItems.find(item => item.id === selectedItem.id);
         setSelectedItemEN(enItem || null);
       }
