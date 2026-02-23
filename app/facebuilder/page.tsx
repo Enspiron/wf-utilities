@@ -87,20 +87,28 @@ export default function FaceBuilder() {
       const charTextJP = await charTextJPRes.json();
       const charTextEN = await charTextENRes.json();
       
-      setFaces(facesData.faces);
-      setFaceUIData(faceUIDataRes);
-      setCharacterData(characterDataRes);
-      setFullShotAttributes(fullShotData);
-      setCharacterTextJP(charTextJP.data);
-      setCharacterTextEN(charTextEN.data);
+      setFaces(Array.isArray(facesData.faces) ? facesData.faces : []);
+      setFaceUIData(faceUIDataRes && typeof faceUIDataRes === 'object' ? faceUIDataRes : {});
+      setCharacterData(characterDataRes && typeof characterDataRes === 'object' ? characterDataRes : {});
+      setFullShotAttributes(fullShotData && typeof fullShotData === 'object' ? fullShotData : {});
+      setCharacterTextJP(charTextJP?.data && typeof charTextJP.data === 'object' ? charTextJP.data : {});
+      setCharacterTextEN(charTextEN?.data && typeof charTextEN.data === 'object' ? charTextEN.data : {});
     } catch (error) {
       console.error('Error loading face data:', error);
+      // Set defaults on error
+      setFaces([]);
+      setFaceUIData({});
+      setCharacterData({});
+      setFullShotAttributes({});
+      setCharacterTextJP({});
+      setCharacterTextEN({});
     } finally {
       setLoading(false);
     }
   };
 
   const filteredFaces = useMemo(() => {
+    if (!Array.isArray(faces)) return [];
     if (!searchTerm) return faces;
     return faces.filter(face => 
       face.toLowerCase().includes(searchTerm.toLowerCase())
@@ -234,7 +242,8 @@ export default function FaceBuilder() {
   };
 
   const availableExpressions = useMemo(() => {
-    if (!selectedFace || !currentFaceData?.story) return [];
+    if (!selectedFace || !currentFaceData?.story?.files) return [];
+    if (!Array.isArray(currentFaceData.story.files)) return [];
     return currentFaceData.story.files.filter(file => 
       !file.startsWith('base_') // Exclude base files from expressions
     );
@@ -244,7 +253,8 @@ export default function FaceBuilder() {
     if (!selectedFace) return [];
     const charId = getCharacterId(selectedFace);
     if (!charId || !fullShotAttributes[charId]) return [];
-    return Object.keys(fullShotAttributes[charId]);
+    const variants = Object.keys(fullShotAttributes[charId]);
+    return Array.isArray(variants) ? variants : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFace, fullShotAttributes]);
 
@@ -597,7 +607,7 @@ export default function FaceBuilder() {
                 {/* Left Panel - File Selection */}
                 <div className="w-80 flex flex-col gap-4 overflow-hidden">
               {/* UI Files */}
-              {currentFaceData?.ui && (
+              {currentFaceData?.ui?.files && Array.isArray(currentFaceData.ui.files) && (
                 <Card className="flex-1 flex flex-col overflow-hidden">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -633,7 +643,7 @@ export default function FaceBuilder() {
               )}
 
               {/* Story Files */}
-              {currentFaceData?.story && (
+              {currentFaceData?.story?.files && Array.isArray(currentFaceData.story.files) && (
                 <Card className="flex-1 flex flex-col overflow-hidden">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
@@ -669,7 +679,7 @@ export default function FaceBuilder() {
               )}
 
               {/* Full Shot Images */}
-              {availableFullShotVariants.length > 0 && (
+              {Array.isArray(availableFullShotVariants) && availableFullShotVariants.length > 0 && (
                 <Card className="flex-1 flex flex-col overflow-hidden">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">
