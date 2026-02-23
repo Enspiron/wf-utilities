@@ -1,15 +1,13 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import Link from 'next/link';
-import { Search, User, Image as ImageIcon, BookOpen, Loader2, Download, Home, Monitor, Layers, Copy, MoveHorizontal, MoveVertical, Maximize2, Languages } from 'lucide-react';
+import { Search, User, Image as ImageIcon, BookOpen, Loader2, Download, Monitor, Layers, Copy, MoveHorizontal, MoveVertical, Maximize2, Languages } from 'lucide-react';
 import Image from 'next/image';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
@@ -276,11 +274,6 @@ export default function FaceBuilder() {
           {/* Header */}
           <div className="border-b border-border p-4">
             <div className="flex items-center gap-2 mb-3">
-              <Link href="/">
-                <Button variant="ghost" size="icon" title="Home">
-                  <Home className="h-4 w-4" />
-                </Button>
-              </Link>
               <User className="h-6 w-6 text-primary" />
               <h1 className="text-xl font-bold flex-1">Face Builder</h1>
               <DropdownMenu>
@@ -301,7 +294,6 @@ export default function FaceBuilder() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <ThemeToggle />
             </div>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

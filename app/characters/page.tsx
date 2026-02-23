@@ -9,9 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Character, CharacterFilters, filterCharacters, getUniqueValues } from '@/lib/character-parser';
 
-const ITEMS_PER_PAGE = 50;
+const ITEMS_PER_PAGE = 24;
 
 export default function CharactersPage() {
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -60,7 +61,7 @@ export default function CharactersPage() {
       genders: getUniqueValues(characters, 'gender'),
       rarities: getUniqueValues(characters, 'rarity'),
       stances: getUniqueValues(characters, 'stance'),
-      voiceActors: getUniqueValues(characters, 'voiceActor'),
+      voiceActors: getUniqueValues(characters, 'voiceActorJP'),
     };
   }, [characters]);
 
@@ -75,9 +76,11 @@ export default function CharactersPage() {
         char.nameEN?.toLowerCase().includes(term) ||
         char.subNameJP.toLowerCase().includes(term) ||
         char.subNameEN?.toLowerCase().includes(term) ||
-        char.title.toLowerCase().includes(term) ||
+        char.titleJP.toLowerCase().includes(term) ||
+        char.titleEN?.toLowerCase().includes(term) ||
         char.faceCode.toLowerCase().includes(term) ||
-        char.voiceActor.toLowerCase().includes(term)
+        char.voiceActorJP.toLowerCase().includes(term) ||
+        char.voiceActorEN?.toLowerCase().includes(term)
       );
     }
     
@@ -101,6 +104,42 @@ export default function CharactersPage() {
     if (language === 'jp') return char.nameJP;
     if (language === 'en' && char.nameEN) return char.nameEN;
     return char.nameEN || char.nameJP;
+  }, [language]);
+
+  const getCharacterTitle = useCallback((char: Character) => {
+    if (language === 'jp') return char.titleJP;
+    if (language === 'en' && char.titleEN) return char.titleEN;
+    return char.titleEN || char.titleJP;
+  }, [language]);
+
+  const getCharacterDescription = useCallback((char: Character) => {
+    if (language === 'jp') return char.descriptionJP;
+    if (language === 'en' && char.descriptionEN) return char.descriptionEN;
+    return char.descriptionEN || char.descriptionJP;
+  }, [language]);
+
+  const getSkillName = useCallback((char: Character) => {
+    if (language === 'jp') return char.skillNameJP;
+    if (language === 'en' && char.skillNameEN) return char.skillNameEN;
+    return char.skillNameEN || char.skillNameJP;
+  }, [language]);
+
+  const getSkillDescription = useCallback((char: Character) => {
+    if (language === 'jp') return char.skillDescriptionJP;
+    if (language === 'en' && char.skillDescriptionEN) return char.skillDescriptionEN;
+    return char.skillDescriptionEN || char.skillDescriptionJP;
+  }, [language]);
+
+  const getLeaderAbilityName = useCallback((char: Character) => {
+    if (language === 'jp') return char.leaderAbilityNameJP;
+    if (language === 'en' && char.leaderAbilityNameEN) return char.leaderAbilityNameEN;
+    return char.leaderAbilityNameEN || char.leaderAbilityNameJP;
+  }, [language]);
+
+  const getVoiceActor = useCallback((char: Character) => {
+    if (language === 'jp') return char.voiceActorJP;
+    if (language === 'en' && char.voiceActorEN) return char.voiceActorEN;
+    return char.voiceActorEN || char.voiceActorJP;
   }, [language]);
 
   const getCharacterImage = useCallback((faceCode: string) => {
@@ -131,7 +170,8 @@ export default function CharactersPage() {
   }
 
   return (
-    <div className="flex h-screen bg-background">
+    <TooltipProvider>
+      <div className="flex h-screen bg-background">
       {/* Sidebar */}
       <div className="w-80 border-r border-border flex flex-col">
         <div className="p-6 border-b border-border">
@@ -365,7 +405,7 @@ export default function CharactersPage() {
             </div>
           ) : layout === 'grid' ? (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {paginatedCharacters.map((char) => (
                 <Card
                   key={char.id}
@@ -376,20 +416,27 @@ export default function CharactersPage() {
                     <CardTitle className="text-sm font-medium truncate" title={getCharacterName(char)}>
                       {getCharacterName(char)}
                     </CardTitle>
-                    <p className="text-xs text-muted-foreground truncate">{char.title}</p>
+                    <p className="text-xs text-muted-foreground truncate">{getCharacterTitle(char)}</p>
                   </CardHeader>
                   <CardContent className="p-4 pt-0">
-                    <div className="aspect-square relative bg-muted rounded-md overflow-hidden mb-3">
-                      <Image
-                        src={getCharacterImage(char.faceCode)}
-                        alt={getCharacterName(char)}
-                        fill
-                        className="object-contain"
-                        style={{ imageRendering: 'pixelated' }}
-                        loading="lazy"
-                        unoptimized
-                      />
-                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="aspect-square relative bg-muted rounded-md overflow-hidden mb-3 cursor-help">
+                          <Image
+                            src={getCharacterImage(char.faceCode)}
+                            alt={getCharacterName(char)}
+                            fill
+                            className="object-contain"
+                            style={{ imageRendering: 'pixelated' }}
+                            loading="lazy"
+                            unoptimized
+                          />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-md break-all">
+                        <p className="text-xs">{getCharacterImage(char.faceCode)}</p>
+                      </TooltipContent>
+                    </Tooltip>
                     <div className="space-y-1">
                       <div className="flex gap-1 mb-2 flex-wrap">
                         <Badge variant="secondary" className="text-xs">{char.attribute}</Badge>
@@ -402,8 +449,8 @@ export default function CharactersPage() {
                       <p className="text-xs text-muted-foreground">
                         <span className="font-semibold">Race:</span> {char.race || 'Unknown'}
                       </p>
-                      <p className="text-xs text-muted-foreground truncate" title={char.voiceActor}>
-                        <span className="font-semibold">VA:</span> {char.voiceActor}
+                      <p className="text-xs text-muted-foreground truncate" title={getVoiceActor(char)}>
+                        <span className="font-semibold">VA:</span> {getVoiceActor(char)}
                       </p>
                     </div>
                   </CardContent>
@@ -413,30 +460,83 @@ export default function CharactersPage() {
 
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2 mt-6">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous
-                  </Button>
+                <div className="flex flex-col items-center gap-3 mt-6">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">
-                      Page {currentPage} of {totalPages}
-                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    
+                    <div className="flex items-center gap-1">
+                      {/* First page */}
+                      {currentPage > 3 && (
+                        <>
+                          <Button
+                            variant={currentPage === 1 ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setCurrentPage(1)}
+                            className="w-9 h-9 p-0"
+                          >
+                            1
+                          </Button>
+                          {currentPage > 4 && <span className="px-1 text-muted-foreground">...</span>}
+                        </>
+                      )}
+                      
+                      {/* Page numbers around current page */}
+                      {Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .filter(page => {
+                          const distance = Math.abs(page - currentPage);
+                          return distance <= 2;
+                        })
+                        .map(page => (
+                          <Button
+                            key={page}
+                            variant={currentPage === page ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setCurrentPage(page)}
+                            className="w-9 h-9 p-0"
+                          >
+                            {page}
+                          </Button>
+                        ))
+                      }
+                      
+                      {/* Last page */}
+                      {currentPage < totalPages - 2 && (
+                        <>
+                          {currentPage < totalPages - 3 && <span className="px-1 text-muted-foreground">...</span>}
+                          <Button
+                            variant={currentPage === totalPages ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setCurrentPage(totalPages)}
+                            className="w-9 h-9 p-0"
+                          >
+                            {totalPages}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
+                  
+                  <span className="text-xs text-muted-foreground">
+                    Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredCharacters.length)} of {filteredCharacters.length} characters
+                  </span>
                 </div>
               )}
             </>
@@ -450,20 +550,27 @@ export default function CharactersPage() {
                     onClick={() => setSelectedCharacter(char)}
                   >
                     <div className="flex gap-4 p-4">
-                      <div className="w-20 h-20 shrink-0 relative bg-muted rounded-md overflow-hidden">
-                        <Image
-                          src={getCharacterImage(char.faceCode)}
-                          alt={getCharacterName(char)}
-                          fill
-                          className="object-contain"
-                          style={{ imageRendering: 'pixelated' }}
-                          loading="lazy"
-                          unoptimized
-                        />
-                      </div>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="w-20 h-20 shrink-0 relative bg-muted rounded-md overflow-hidden cursor-help">
+                            <Image
+                              src={getCharacterImage(char.faceCode)}
+                              alt={getCharacterName(char)}
+                              fill
+                              className="object-contain"
+                              style={{ imageRendering: 'pixelated' }}
+                              loading="lazy"
+                              unoptimized
+                            />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-md break-all">
+                          <p className="text-xs">{getCharacterImage(char.faceCode)}</p>
+                        </TooltipContent>
+                      </Tooltip>
                       <div className="flex-1 min-w-0">
                         <h4 className="font-medium truncate">{getCharacterName(char)}</h4>
-                        <p className="text-sm text-muted-foreground truncate">{char.title}</p>
+                        <p className="text-sm text-muted-foreground truncate">{getCharacterTitle(char)}</p>
                         <div className="flex gap-2 mt-2">
                           <Badge variant="secondary" className="text-xs">{char.attribute}</Badge>
                           <Badge variant="outline" className="text-xs">{char.weaponType}</Badge>
@@ -482,30 +589,83 @@ export default function CharactersPage() {
 
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2 mt-6">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous
-                  </Button>
+                <div className="flex flex-col items-center gap-3 mt-6">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">
-                      Page {currentPage} of {totalPages}
-                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    
+                    <div className="flex items-center gap-1">
+                      {/* First page */}
+                      {currentPage > 3 && (
+                        <>
+                          <Button
+                            variant={currentPage === 1 ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setCurrentPage(1)}
+                            className="w-9 h-9 p-0"
+                          >
+                            1
+                          </Button>
+                          {currentPage > 4 && <span className="px-1 text-muted-foreground">...</span>}
+                        </>
+                      )}
+                      
+                      {/* Page numbers around current page */}
+                      {Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .filter(page => {
+                          const distance = Math.abs(page - currentPage);
+                          return distance <= 2;
+                        })
+                        .map(page => (
+                          <Button
+                            key={page}
+                            variant={currentPage === page ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setCurrentPage(page)}
+                            className="w-9 h-9 p-0"
+                          >
+                            {page}
+                          </Button>
+                        ))
+                      }
+                      
+                      {/* Last page */}
+                      {currentPage < totalPages - 2 && (
+                        <>
+                          {currentPage < totalPages - 3 && <span className="px-1 text-muted-foreground">...</span>}
+                          <Button
+                            variant={currentPage === totalPages ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setCurrentPage(totalPages)}
+                            className="w-9 h-9 p-0"
+                          >
+                            {totalPages}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
+                  
+                  <span className="text-xs text-muted-foreground">
+                    Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredCharacters.length)} of {filteredCharacters.length} characters
+                  </span>
                 </div>
               )}
             </>
@@ -519,27 +679,56 @@ export default function CharactersPage() {
           {selectedCharacter && (
             <>
               <DialogHeader>
-                <DialogTitle>{getCharacterName(selectedCharacter)}</DialogTitle>
+                <div className="flex items-center justify-between">
+                  <DialogTitle>{getCharacterName(selectedCharacter)}</DialogTitle>
+                  
+                  {/* Language Toggle */}
+                  <div className="flex items-center gap-1 border rounded-md p-1">
+                    <Button
+                      variant={language === 'jp' ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setLanguage('jp')}
+                      className="h-7 px-3 text-xs"
+                    >
+                      🇯🇵 JP
+                    </Button>
+                    <Button
+                      variant={language === 'en' ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setLanguage('en')}
+                      className="h-7 px-3 text-xs"
+                    >
+                      🇬🇧 EN
+                    </Button>
+                  </div>
+                </div>
               </DialogHeader>
               
               <ScrollArea className="flex-1">
                 <div className="space-y-6">
                   {/* Character Image and Basic Info */}
                   <div className="flex gap-6">
-                    <div className="w-48 h-48 shrink-0 relative bg-muted rounded-md overflow-hidden">
-                      <Image
-                        src={getCharacterImage(selectedCharacter.faceCode)}
-                        alt={getCharacterName(selectedCharacter)}
-                        fill
-                        className="object-contain"
-                        style={{ imageRendering: 'pixelated' }}
-                        unoptimized
-                      />
-                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="w-48 h-48 shrink-0 relative bg-muted rounded-md overflow-hidden cursor-help">
+                          <Image
+                            src={getCharacterImage(selectedCharacter.faceCode)}
+                            alt={getCharacterName(selectedCharacter)}
+                            fill
+                            className="object-contain"
+                            style={{ imageRendering: 'pixelated' }}
+                            unoptimized
+                          />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-md break-all">
+                        <p className="text-xs">{getCharacterImage(selectedCharacter.faceCode)}</p>
+                      </TooltipContent>
+                    </Tooltip>
                     <div className="flex-1 space-y-3">
                       <div>
                         <h3 className="text-lg font-semibold">{getCharacterName(selectedCharacter)}</h3>
-                        <p className="text-sm text-muted-foreground">{selectedCharacter.title}</p>
+                        <p className="text-sm text-muted-foreground">{getCharacterTitle(selectedCharacter)}</p>
                       </div>
                       
                       <div className="grid grid-cols-2 gap-3">
@@ -571,32 +760,32 @@ export default function CharactersPage() {
                   </div>
 
                   {/* Description */}
-                  {selectedCharacter.description && (
+                  {getCharacterDescription(selectedCharacter) && (
                     <div>
                       <h4 className="font-semibold mb-2">Description</h4>
-                      <p className="text-sm text-muted-foreground">{selectedCharacter.description}</p>
+                      <p className="text-sm text-muted-foreground">{getCharacterDescription(selectedCharacter)}</p>
                     </div>
                   )}
 
                   {/* Skill */}
                   <div>
-                    <h4 className="font-semibold mb-2">Skill: {selectedCharacter.skillName}</h4>
-                    <p className="text-sm text-muted-foreground">{selectedCharacter.skillDescription}</p>
+                    <h4 className="font-semibold mb-2">Skill: {getSkillName(selectedCharacter)}</h4>
+                    <p className="text-sm text-muted-foreground">{getSkillDescription(selectedCharacter)}</p>
                   </div>
 
                   {/* Leader Ability */}
-                  {selectedCharacter.leaderAbilityName && selectedCharacter.leaderAbilityName !== '(None)' && (
+                  {getLeaderAbilityName(selectedCharacter) && getLeaderAbilityName(selectedCharacter) !== '(None)' && (
                     <div>
                       <h4 className="font-semibold mb-2">Leader Ability</h4>
-                      <p className="text-sm">{selectedCharacter.leaderAbilityName}</p>
+                      <p className="text-sm">{getLeaderAbilityName(selectedCharacter)}</p>
                     </div>
                   )}
 
                   {/* Voice Actor */}
-                  {selectedCharacter.voiceActor && (
+                  {getVoiceActor(selectedCharacter) && (
                     <div>
                       <h4 className="font-semibold mb-2">Voice Actor</h4>
-                      <p className="text-sm">{selectedCharacter.voiceActor}</p>
+                      <p className="text-sm">{getVoiceActor(selectedCharacter)}</p>
                     </div>
                   )}
                 </div>
@@ -606,5 +795,6 @@ export default function CharactersPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </TooltipProvider>
   );
 }
