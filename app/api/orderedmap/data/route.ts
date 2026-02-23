@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+const IS_PRODUCTION = process.env.VERCEL === '1';
+const GITHUB_RAW_URL = 'https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data';
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -16,9 +19,9 @@ export async function GET(request: NextRequest) {
 
     const dataFolder = lang === 'en' ? 'datalist_en' : 'datalist';
     
-    // Try fetching from public folder via HTTP (works locally and on Vercel)
-    try {
-      const fileUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/data/${dataFolder}/${category}/${file}.json`;
+    // In production, fetch from GitHub
+    if (IS_PRODUCTION) {
+      const fileUrl = `${GITHUB_RAW_URL}/${dataFolder}/${category}/${file}.json`;
       const response = await fetch(fileUrl);
       
       if (response.ok) {
@@ -29,12 +32,12 @@ export async function GET(request: NextRequest) {
           data: jsonData,
           lang,
         });
+      } else {
+        return NextResponse.json({ error: 'File not found on GitHub' }, { status: 404 });
       }
-    } catch (e) {
-      console.log('Public file fetch failed, trying filesystem');
     }
     
-    // Fallback to filesystem
+    // Development: use local filesystem
     const fs = await import('fs');
     const path = await import('path');
     
