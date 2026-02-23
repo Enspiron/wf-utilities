@@ -60,7 +60,7 @@ export default function CalendarPage() {
       const allEvents: CampaignEvent[] = [];
 
       // Parse reward campaigns
-      if (rewardData.data) {
+      if (rewardData?.data && typeof rewardData.data === 'object') {
         Object.entries(rewardData.data).forEach(([id, data]) => {
           if (Array.isArray(data) && data[1] && data[2]) {
             const startDate = new Date(data[1] as string);
@@ -79,7 +79,7 @@ export default function CalendarPage() {
       }
 
       // Parse stamina campaigns
-      if (staminaData.data) {
+      if (staminaData?.data && typeof staminaData.data === 'object') {
         Object.entries(staminaData.data).forEach(([id, data]) => {
           if (Array.isArray(data) && data[1] && data[2]) {
             const startDate = new Date(data[1] as string);
@@ -98,7 +98,7 @@ export default function CalendarPage() {
       }
 
       // Parse challenge campaigns
-      if (challengeData.data) {
+      if (challengeData?.data && typeof challengeData.data === 'object') {
         Object.entries(challengeData.data).forEach(([id, data]) => {
           if (Array.isArray(data) && data[1] && data[2]) {
             const startDate = new Date(data[1] as string);
@@ -117,7 +117,7 @@ export default function CalendarPage() {
       }
 
       // Parse gacha events (dates at indices 29, 30)
-      if (gachaData.data) {
+      if (gachaData?.data && typeof gachaData.data === 'object') {
         Object.entries(gachaData.data).forEach(([id, data]) => {
           if (Array.isArray(data) && data[29] && data[30]) {
             const startDate = new Date(data[29] as string);
@@ -138,7 +138,7 @@ export default function CalendarPage() {
       }
 
       // Parse active mission events (dates at indices 14, 15)
-      if (activeMissionData.data) {
+      if (activeMissionData?.data && typeof activeMissionData.data === 'object') {
         Object.entries(activeMissionData.data).forEach(([id, data]) => {
           if (Array.isArray(data) && data[14]) {
             const startDate = new Date(data[14] as string);
@@ -163,7 +163,7 @@ export default function CalendarPage() {
       }
 
       // Parse login bonus (nested structure, dates at indices 40, 41)
-      if (loginBonusData.data) {
+      if (loginBonusData?.data && typeof loginBonusData.data === 'object') {
         Object.entries(loginBonusData.data).forEach(([category, categoryData]) => {
           if (typeof categoryData === 'object' && categoryData !== null) {
             Object.entries(categoryData).forEach(([id, data]) => {
@@ -216,18 +216,22 @@ export default function CalendarPage() {
       }
     } catch (error) {
       console.error('Error loading campaign data:', error);
+      // Ensure events is always an array even on error
+      setEvents([]);
     } finally {
       setLoading(false);
     }
   }
 
   const filteredEvents = useMemo(() => {
+    if (!Array.isArray(events)) return [];
     if (filterType === 'all') return events;
     return events.filter(e => e.type === filterType);
   }, [events, filterType]);
 
   // Get events for a specific date
   const getEventsForDate = (date: Date) => {
+    if (!Array.isArray(filteredEvents)) return [];
     const time = date.getTime();
     return filteredEvents.filter(event => {
       if (!event.startDate || !event.endDate || 
@@ -242,10 +246,21 @@ export default function CalendarPage() {
   const datesWithEvents = useMemo<Date[]>(() => {
     const dates: Date[] = [];
 
+    // Safety check - ensure filteredEvents is an array
+    if (!Array.isArray(filteredEvents) || filteredEvents.length === 0) {
+      return dates;
+    }
+
     // Collect all dates that have events
     filteredEvents.forEach(event => {
+      if (!event || !event.startDate || !event.endDate) return;
+      
       const start = new Date(event.startDate);
       const end = new Date(event.endDate);
+      
+      // Validate dates
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
+      
       start.setHours(0, 0, 0, 0);
       end.setHours(0, 0, 0, 0);
 
@@ -266,18 +281,21 @@ export default function CalendarPage() {
 
   // Month display events (events that overlap with current month)
   const monthEvents = useMemo(() => {
+    if (!Array.isArray(filteredEvents)) return [];
+    
     const year = month.getFullYear();
     const monthNum = month.getMonth();
     const monthStart = new Date(year, monthNum, 1);
     const monthEnd = new Date(year, monthNum + 1, 0, 23, 59, 59);
     
     return filteredEvents.filter(event => {
+      if (!event || !event.startDate || !event.endDate) return false;
       return (event.startDate <= monthEnd && event.endDate >= monthStart);
     });
   }, [month, filteredEvents]);
 
   const dateRange = useMemo(() => {
-    if (events.length === 0) return { min: new Date(), max: new Date() };
+    if (!Array.isArray(events) || events.length === 0) return { min: new Date(), max: new Date() };
     const validDates = events.flatMap(e => {
       const dates = [];
       if (e.startDate && !isNaN(e.startDate.getTime())) dates.push(e.startDate);

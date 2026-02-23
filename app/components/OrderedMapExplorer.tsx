@@ -47,7 +47,8 @@ export default function OrderedMapExplorer() {
 
   const parsedItems = useMemo(() => {
     if (!fileData?.data) return [];
-    return parseOrderedMapJson(fileData.data, currentLocation.type === 'file' ? currentLocation.category : undefined);
+    const parsed = parseOrderedMapJson(fileData.data, currentLocation.type === 'file' ? currentLocation.category : undefined);
+    return Array.isArray(parsed) ? parsed : [];
   }, [fileData, currentLocation]);
 
   useEffect(() => {
@@ -59,10 +60,12 @@ export default function OrderedMapExplorer() {
       const lang = language === 'both' ? 'jp' : language;
       const response = await fetch(`/api/orderedmap/list?lang=${lang}`);
       const data = await response.json();
-      setCategories(data.categories);
-      setFilesByCategory(data.filesByCategory);
+      setCategories(Array.isArray(data.categories) ? data.categories : []);
+      setFilesByCategory(data.filesByCategory && typeof data.filesByCategory === 'object' ? data.filesByCategory : {});
     } catch (error) {
       console.error('Error fetching file list:', error);
+      setCategories([]);
+      setFilesByCategory({});
     } finally {
       setLoading(false);
     }
@@ -162,6 +165,7 @@ export default function OrderedMapExplorer() {
   }, [getCategoryType]);
 
   const filteredCategories = useMemo(() => {
+    if (!Array.isArray(categories)) return [];
     if (!searchTerm) return categories;
     return categories.filter(cat =>
       cat.toLowerCase().includes(searchTerm.toLowerCase())
@@ -176,17 +180,20 @@ export default function OrderedMapExplorer() {
       data: [] as string[],
     };
     
-    filteredCategories.forEach(cat => {
-      const type = getCategoryType(cat);
-      groups[type].push(cat);
-    });
+    if (Array.isArray(filteredCategories)) {
+      filteredCategories.forEach(cat => {
+        const type = getCategoryType(cat);
+        groups[type].push(cat);
+      });
+    }
     
     return groups;
   }, [filteredCategories, getCategoryType]);
 
   const filteredFiles = useMemo(() => {
     if (currentLocation.type !== 'folder') return [];
-    const files = filesByCategory[currentLocation.category] || [];
+    const files = filesByCategory[currentLocation.category];
+    if (!Array.isArray(files)) return [];
     if (!searchTerm) return files;
     return files.filter(file =>
       file.toLowerCase().includes(searchTerm.toLowerCase())
