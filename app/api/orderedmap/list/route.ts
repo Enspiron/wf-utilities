@@ -1,33 +1,29 @@
 import { NextResponse } from 'next/server';
-
-// For production on Vercel, use a pre-generated manifest
-// For development, read filesystem
-const USE_MANIFEST = process.env.VERCEL === '1';
+import fs from 'fs';
+import path from 'path';
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const lang = searchParams.get('lang') || 'jp';
     
-    if (USE_MANIFEST) {
-      // In production, fetch from GitHub and build manifest dynamically
-      // Note: This is a placeholder - we'll generate manifests separately
-      const manifestUrl = `https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data/manifest_${lang}.json`;
-      const response = await fetch(manifestUrl, { next: { revalidate: 3600 } });
-      
-      if (!response.ok) {
-        return NextResponse.json({ error: 'Manifest not found' }, { status: 404 });
-      }
-      
-      const data = await response.json();
-     return NextResponse.json({ ...data, lang });
+    // Use pre-generated manifests for both dev and production
+    const manifestPath = path.join(process.cwd(), 'public', 'data', `manifest_${lang}.json`);
+    
+    if (fs.existsSync(manifestPath)) {
+      // Use manifest file if it exists
+      const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
+      const data = JSON.parse(manifestContent);
+      return NextResponse.json({ ...data, lang });
     } else {
-      // Development: read from filesystem
-      const fs = await import('fs');
-      const path = await import('path');
-      
+      // Fallback: scan filesystem
       const dataFolder = lang === 'en' ? 'datalist_en' : 'datalist';
       const orderedmapDir = path.join(process.cwd(), 'public', 'data', dataFolder);
+      
+      if (!fs.existsSync(orderedmapDir)) {
+        return NextResponse.json({ error: 'Data folder not found' }, { status: 404 });
+      }
+      
       const categories = fs.readdirSync(orderedmapDir, { withFileTypes: true })
         .filter(dirent => dirent.isDirectory())
         .map(dirent => dirent.name);
