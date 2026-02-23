@@ -1,26 +1,27 @@
 import { NextResponse } from 'next/server';
 
-// Use manifest files for better performance
+const IS_PRODUCTION = process.env.VERCEL === '1';
+const GITHUB_RAW_URL = 'https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data';
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const lang = searchParams.get('lang') || 'jp';
     
-    // Try to use manifestfile first (works locally and on Vercel)
-    try {
-      const manifestResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/data/manifest_${lang}.json`
-      );
+    // In production, fetch from GitHub
+    if (IS_PRODUCTION) {
+      const manifestUrl = `${GITHUB_RAW_URL}/manifest_${lang}.json`;
+      const response = await fetch(manifestUrl, { next: { revalidate: 3600 } });
       
-      if (manifestResponse.ok) {
-        const data = await manifestResponse.json();
+      if (response.ok) {
+        const data = await response.json();
         return NextResponse.json({ ...data, lang });
+      } else {
+        return NextResponse.json({ error: 'Manifest not found on GitHub' }, { status: 404 });
       }
-    } catch (e) {
-      console.log('Manifest fetch failed, trying filesystem');
     }
     
-    // Fallback to filesystem (development only)
+    // Development: use local filesystem
     const fs = await import('fs');
     const path = await import('path');
     
