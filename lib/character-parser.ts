@@ -77,15 +77,20 @@ export function parseCharacterData(
     
     if (!textData || !Array.isArray(data)) continue;
 
+    // Handle both old format (direct array) and new format (array of arrays)
+    // New format: "10": [["white_tiger", "1", ...]]
+    // Old format: "10": ["white_tiger", "1", ...]
+    const characterArray = Array.isArray(data[0]) && typeof data[0][0] === 'string' ? data[0] : data;
+
     const character: Character = {
       id,
-      faceCode: String(data[0] || ''),
-      attribute: attributeNames[String(data[1])] || String(data[1]),
-      rarity: String((parseInt(String(data[3])) || 0) + 1),
-      race: String(data[4] || ''),
-      weaponType: weaponNames[String(data[6])] || String(data[6]),
-      gender: String(data[7] || ''),
-      stance: String(data[26] || ''),
+      faceCode: String(characterArray[0] || ''),
+      attribute: attributeNames[String(characterArray[1])] || String(characterArray[1]),
+      rarity: String((parseInt(String(characterArray[3])) || 0) + 1),
+      race: String(characterArray[4] || ''),
+      weaponType: weaponNames[String(characterArray[6])] || String(characterArray[6]),
+      gender: String(characterArray[7] || ''),
+      stance: String(characterArray[26] || ''),
       nameJP: String(textData[0] || ''),
       nameEN: textDataEN ? String(textDataEN[0] || '') : undefined,
       subNameJP: String(textData[1] || ''),
@@ -191,4 +196,80 @@ export function getUniqueValues(
   });
   
   return Array.from(values).filter(v => v && v !== '(None)' && v !== '').sort();
+}
+
+// Parser for the alternative character data format (characters_all.json)
+interface CharacterAllFormat {
+  chars: Array<{
+    DevNicknames: string;
+    Attribute: string;
+    Rarity: number;
+    Race: string;
+    Role: string;
+    Gender: string;
+    Stance: string;
+    JPName: string;
+    ENName: string;
+    SubName: string;
+    va: string;
+    Skill: string;
+    LeaderBuff: string;
+    [key: string]: unknown;
+  }>;
+}
+
+const weaponRoleMap: Record<string, string> = {
+  'Sword': 'Slash',
+  'Bow': 'Shot',
+  'Gun': 'Shot',
+  'Fist': 'Strike',
+  'Staff': 'Thrust',
+  'Katana': 'Slash',
+  'Spear': 'Thrust',
+  'Axe': 'Strike',
+};
+
+export function parseCharacterAllData(data: CharacterAllFormat): Character[] {
+  return data.chars.map((char, index) => {
+    // Extract title from EN name (format: "[Title]\nName")
+    const enNameParts = char.ENName?.split('\n') || [];
+    const titleEN = enNameParts[0]?.replace(/[\[\]]/g, '') || '';
+    const nameEN = enNameParts[1] || char.JPName;
+
+    const character: Character = {
+      id: String(index + 1),
+      faceCode: char.DevNicknames || '',
+      attribute: char.Attribute || '',
+      rarity: String(char.Rarity || 5),
+      race: char.Race || '',
+      weaponType: weaponRoleMap[char.Role] || char.Role || '',
+      gender: char.Gender || '',
+      stance: char.Stance || '',
+      nameJP: char.JPName || '',
+      nameEN: nameEN,
+      subNameJP: char.SubName || '',
+      subNameEN: titleEN,
+      descriptionJP: '',
+      descriptionEN: '',
+      titleJP: char.SubName || '',
+      titleEN: titleEN,
+      skillNameJP: '',
+      skillNameEN: '',
+      skillDescriptionJP: char.Skill || '',
+      skillDescriptionEN: char.Skill || '',
+      leaderAbilityNameJP: '',
+      leaderAbilityNameEN: '',
+      voiceActorJP: char.va || '',
+      voiceActorEN: char.va || '',
+      // Legacy fields
+      description: '',
+      title: titleEN || char.SubName || '',
+      skillName: '',
+      skillDescription: char.Skill || '',
+      leaderAbilityName: '',
+      voiceActor: char.va || '',
+    };
+
+    return character;
+  });
 }
