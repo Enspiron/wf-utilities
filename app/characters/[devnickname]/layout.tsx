@@ -3,7 +3,7 @@ import { Character } from '@/lib/character-parser';
 
 interface CharacterLayoutProps {
   children: React.ReactNode;
-  params: { devnickname: string };
+  params: Promise<{ devnickname: string }>;
 }
 
 async function getCharacter(devnickname: string): Promise<Character | null> {
@@ -25,9 +25,10 @@ async function getCharacter(devnickname: string): Promise<Character | null> {
 export async function generateMetadata({
   params,
 }: {
-  params: { devnickname: string };
+  params: Promise<{ devnickname: string }>;
 }): Promise<Metadata> {
-  const character = await getCharacter(params.devnickname);
+  const { devnickname } = await params;
+  const character = await getCharacter(devnickname);
 
   if (!character) {
     return {
