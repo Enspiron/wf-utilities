@@ -56,12 +56,8 @@ export async function generateMetadata({
   const fullTitle = title ? `${name} - ${title}` : name;
   const metaDescription = description || `${fullTitle} - ${character.attribute} ${character.weaponType} character from World Flipper`;
 
-  // Use absolute URL for images (required for Discord/social media embeds)
-  const baseUrl = process.env.VERCEL_URL 
-    ? `https://${process.env.VERCEL_URL}`
-    : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-  
-  const imageUrl = `${baseUrl}/data/datalist/character/face/${character.faceCode}.png`;
+  // Use square_0 image from CDN for better quality in embeds
+  const imageUrl = `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${character.faceCode}/ui/square_0.png`;
 
   return {
     title: `${fullTitle} - WF Facemaker`,
