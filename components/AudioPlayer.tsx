@@ -23,6 +23,14 @@ export default function AudioPlayer({ src, onError, compact = false }: AudioPlay
   const [isMuted, setIsMuted] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
+  // Set audio src when component mounts or src changes
+  useEffect(() => {
+    if (audioRef.current && src) {
+      audioRef.current.src = src;
+      audioRef.current.load();
+    }
+  }, [src]);
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || (compact && !isLoaded)) return;
@@ -134,9 +142,7 @@ export default function AudioPlayer({ src, onError, compact = false }: AudioPlay
   if (compact) {
     return (
       <div className="flex items-center gap-2">
-        <audio ref={audioRef} src={src} preload="none">
-          <source src={src} type="audio/mpeg" />
-        </audio>
+        <audio ref={audioRef} preload="none" />
         <Button
           variant="outline"
           size="sm"
@@ -161,9 +167,7 @@ export default function AudioPlayer({ src, onError, compact = false }: AudioPlay
   // Full mode: complete controls
   return (
     <div className="space-y-3 w-full">
-      <audio ref={audioRef} src={src} preload="metadata">
-        <source src={src} type="audio/mpeg" />
-      </audio>
+      <audio ref={audioRef} preload="metadata" />
 
       {/* Progress Bar */}
       <div className="space-y-1">
