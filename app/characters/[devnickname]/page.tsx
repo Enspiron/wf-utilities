@@ -8,12 +8,19 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Character } from '@/lib/character-parser';
+import AudioPlayer from '@/components/AudioPlayer';
+
+interface CharacterTheme {
+  path: string;
+  songName: string;
+  url: string;
+}
 
 
 
 // Helper functions
 const getCharacterImage = (faceCode: string) => {
-  return `/data/datalist/character/face/${faceCode}.png`;
+  return `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${faceCode}/ui/square_0.png`;
 };
 
 const getAttributeIcon = (attr: string) => {
@@ -93,7 +100,9 @@ export default function CharacterDetailPage() {
   const params = useParams();
   const router = useRouter();
   const [character, setCharacter] = useState<Character | null>(null);
+  const [themes, setThemes] = useState<CharacterTheme[]>([]);
   const [loading, setLoading] = useState(true);
+  const [themesLoading, setThemesLoading] = useState(false);
 
   useEffect(() => {
     async function loadCharacter() {
@@ -111,6 +120,23 @@ export default function CharacterDetailPage() {
       }
     }
     loadCharacter();
+  }, [params.devnickname]);
+
+  useEffect(() => {
+    async function loadThemes() {
+      if (!params.devnickname) return;
+      setThemesLoading(true);
+      try {
+        const response = await fetch(`/api/character-theme?devnickname=${params.devnickname}`);
+        const data = await response.json();
+        setThemes(data.themes || []);
+      } catch (error) {
+        console.error('Error loading character themes:', error);
+      } finally {
+        setThemesLoading(false);
+      }
+    }
+    loadThemes();
   }, [params.devnickname]);
 
   if (loading) {
@@ -276,10 +302,40 @@ export default function CharacterDetailPage() {
               </CardContent>
             </Card>
 
+            {/* Music Theme */}
             <Card>
               <CardContent className="p-6">
                 <h2 className="text-xl font-semibold mb-3">Music Theme</h2>
-                <p className="text-muted-foreground text-sm">Coming soon...</p>
+                {themesLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Loading themes...</span>
+                  </div>
+                ) : themes.length > 0 ? (
+                  <div className="space-y-4">
+                    {themes.map((theme) => (
+                      <div key={theme.path} className="space-y-2">
+                        <div>
+                          <p className="text-sm font-medium">{theme.songName}</p>
+                          <a 
+                            href={theme.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-xs text-muted-foreground hover:underline"
+                          >
+                            {theme.url}
+                          </a>
+                        </div>
+                        <AudioPlayer 
+                          src={theme.url}
+                          onError={() => console.error('Failed to load audio:', theme.url)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-sm">No theme music available for this character.</p>
+                )}
               </CardContent>
             </Card>
           </div>
