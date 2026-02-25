@@ -40,7 +40,7 @@ export interface Character {
 export interface CharacterFilters {
   attribute?: string;
   weaponType?: string;
-  race?: string;
+  race?: string[];
   gender?: string;
   rarity?: string;
   stance?: string;
@@ -129,7 +129,11 @@ export function filterCharacters(
   return characters.filter((char) => {
     if (filters.attribute && char.attribute !== filters.attribute) return false;
     if (filters.weaponType && char.weaponType !== filters.weaponType) return false;
-    if (filters.race && !char.race.includes(filters.race)) return false;
+    if (filters.race && filters.race.length > 0) {
+      const charRaces = char.race.split(' / ').map(r => r.trim());
+      const hasMatch = filters.race.some(selectedRace => charRaces.includes(selectedRace));
+      if (!hasMatch) return false;
+    }
     if (filters.gender && char.gender !== filters.gender) return false;
     if (filters.rarity && char.rarity !== filters.rarity) return false;
     if (filters.stance && char.stance !== filters.stance) return false;
@@ -186,9 +190,9 @@ export function getUniqueValues(
   characters.forEach((char) => {
     const value = char[field];
     if (value && typeof value === 'string') {
-      // Handle comma-separated values (like races)
-      if (value.includes(',')) {
-        value.split(',').forEach(v => values.add(v.trim()));
+      // Handle slash-separated values (like races: "Human / Beast")
+      if (value.includes(' / ')) {
+        value.split(' / ').forEach(v => values.add(v.trim()));
       } else {
         values.add(value);
       }
