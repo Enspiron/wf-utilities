@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FileJson, User, Calendar, Database, Home, Menu, X } from 'lucide-react';
+import { FileJson, User, Calendar, Database, Home, Menu, X, Music2, Package } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
@@ -12,6 +12,8 @@ const navItems = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/orderedmap', label: 'OrderedMap', icon: FileJson },
   { href: '/characters', label: 'Characters', icon: Database },
+  { href: '/items', label: 'Items', icon: Package },
+  { href: '/music', label: 'Music', icon: Music2 },
   { href: '/calendar', label: 'Calendar', icon: Calendar },
   { href: '/facebuilder', label: 'Face Builder', icon: User },
 ];

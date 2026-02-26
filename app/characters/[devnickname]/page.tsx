@@ -14,6 +14,7 @@ interface CharacterTheme {
   path: string;
   songName: string;
   url: string;
+  fallbackUrls?: string[];
 }
 
 
@@ -68,6 +69,18 @@ const getRaceIcon = (race: string) => {
   return `/FilterIcons/races/race_${iconName}_medium.png`;
 };
 
+const getRarityIcon = (rarity: string) => {
+  const rarityMap: Record<string, string> = {
+    '1': 'one',
+    '2': 'two',
+    '3': 'three',
+    '4': 'four',
+    '5': 'five',
+  };
+  const rarityWord = rarityMap[rarity] || 'five';
+  return `/FilterIcons/rarity/rarity_${rarityWord}.png`;
+};
+
 const getCharacterName = (char: Character) => {
   return char.nameEN || char.nameJP || 'Unknown';
 };
@@ -103,6 +116,8 @@ export default function CharacterDetailPage() {
   const [themes, setThemes] = useState<CharacterTheme[]>([]);
   const [loading, setLoading] = useState(true);
   const [themesLoading, setThemesLoading] = useState(false);
+  const [themeUrls, setThemeUrls] = useState<Record<string, string>>({});
+  const [themeUrlIndex, setThemeUrlIndex] = useState<Record<string, number>>({});
 
   useEffect(() => {
     async function loadCharacter() {
@@ -129,7 +144,26 @@ export default function CharacterDetailPage() {
       try {
         const response = await fetch(`/api/character-theme?devnickname=${params.devnickname}`);
         const data = await response.json();
-        setThemes(data.themes || []);
+        const themesWithFallback = (data.themes || []).map((theme: CharacterTheme) => {
+          const songName = theme.songName || String(params.devnickname);
+          return {
+            ...theme,
+            fallbackUrls: [
+              `https://wfjukebox.b-cdn.net/music/character_unique/${params.devnickname}/${songName}.mp3`,
+              `https://raw.githubusercontent.com/Enspiron/WorldFlipperPlayer/main/character_unique/${params.devnickname}/${songName}.mp3`,
+            ],
+          };
+        });
+        setThemes(themesWithFallback);
+        // Initialize theme URLs with primary URLs and index tracker
+        const urls: Record<string, string> = {};
+        const indexes: Record<string, number> = {};
+        themesWithFallback.forEach((theme: CharacterTheme) => {
+          urls[theme.path] = theme.url;
+          indexes[theme.path] = 0; // Start at primary URL
+        });
+        setThemeUrls(urls);
+        setThemeUrlIndex(indexes);
       } catch (error) {
         console.error('Error loading character themes:', error);
       } finally {
@@ -244,7 +278,16 @@ export default function CharacterDetailPage() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Rarity</p>
-                      <p className="text-sm">{'⭐'.repeat(parseInt(character.rarity) || 1)}</p>
+                      <div className="flex items-center">
+                        <Image
+                          src={getRarityIcon(character.rarity)}
+                          alt={`${character.rarity} star`}
+                          width={80}
+                          height={16}
+                          unoptimized
+                          className="object-contain"
+                        />
+                      </div>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Gender</p>
@@ -313,25 +356,51 @@ export default function CharacterDetailPage() {
                   </div>
                 ) : themes.length > 0 ? (
                   <div className="space-y-4">
-                    {themes.map((theme) => (
-                      <div key={theme.path} className="space-y-2">
-                        <div>
-                          <p className="text-sm font-medium">{theme.songName}</p>
-                          <a 
-                            href={theme.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-xs text-muted-foreground hover:underline"
-                          >
-                            {theme.url}
-                          </a>
+                    {themes.map((theme) => {
+                      const currentUrl = themeUrls[theme.path] || theme.url;
+                      const currentIndex = themeUrlIndex[theme.path] || 0;
+                      
+                      const handleAudioError = () => {
+                        console.warn('Audio failed:', currentUrl);
+                        
+                        // Try next fallback URL if available
+                        if (theme.fallbackUrls && currentIndex < theme.fallbackUrls.length) {
+                          const nextUrl = theme.fallbackUrls[currentIndex];
+                          console.log(`Trying fallback ${currentIndex + 1}/${theme.fallbackUrls.length}:`, nextUrl);
+                          setThemeUrls(prev => ({
+                            ...prev,
+                            [theme.path]: nextUrl,
+                          }));
+                          setThemeUrlIndex(prev => ({
+                            ...prev,
+                            [theme.path]: currentIndex + 1,
+                          }));
+                        } else {
+                          console.error('All audio sources failed for:', theme.songName);
+                        }
+                      };
+                      
+                      return (
+                        <div key={theme.path} className="space-y-2">
+                          <div>
+                            <p className="text-sm font-medium">{theme.songName}</p>
+                            <a 
+                              href={currentUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-xs text-muted-foreground hover:underline"
+                            >
+                              {currentUrl}
+                            </a>
+                          </div>
+                          <AudioPlayer 
+                            key={currentUrl}
+                            src={currentUrl}
+                            onError={handleAudioError}
+                          />
                         </div>
-                        <AudioPlayer 
-                          src={theme.url}
-                          onError={() => console.error('Failed to load audio:', theme.url)}
-                        />
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-muted-foreground text-sm">No theme music available for this character.</p>
