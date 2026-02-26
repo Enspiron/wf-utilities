@@ -56,9 +56,24 @@ const getRaceIcon = (race: string) => {
     'Demon': 'devil',
     'Plant': 'plants',
     'Youkai': 'mystery',
+    'Human / Youkai': 'mystery',  // Handle hybrid races
   };
-  const iconName = map[race] || race.toLowerCase();
+  // Clean race name: take first part if it contains a slash, remove special chars
+  const cleanedRace = race.includes('/') ? race.split('/')[0].trim() : race;
+  const iconName = map[race] || map[cleanedRace] || cleanedRace.toLowerCase();
   return `/FilterIcons/races/race_${iconName}_medium.png`;
+};
+
+const getRarityIcon = (rarity: string) => {
+  const rarityMap: Record<string, string> = {
+    '1': 'one',
+    '2': 'two',
+    '3': 'three',
+    '4': 'four',
+    '5': 'five',
+  };
+  const rarityWord = rarityMap[rarity] || 'five';
+  return `/FilterIcons/rarity/rarity_${rarityWord}.png`;
 };
 
 export default function CharactersPage() {
@@ -625,195 +640,277 @@ export default function CharactersPage() {
 
       {/* Filter Modal */}
       <Dialog open={filterModalOpen} onOpenChange={setFilterModalOpen}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
             <DialogHeader>
-              <DialogTitle>Filter Characters</DialogTitle>
+              <DialogTitle className="text-2xl font-bold">Filter Characters</DialogTitle>
             </DialogHeader>
             
-            <ScrollArea className="flex-1 pr-4">
+            <ScrollArea className="flex-1 pr-2 min-h-0 [&>[data-radix-scroll-area-viewport]]:max-h-[60vh]">
               <div className="space-y-6 py-4">
                 {/* Attribute Filter */}
-                <div>
-                  <label className="text-sm font-medium mb-3 block">Attribute</label>
-                  <div className="flex flex-wrap gap-2">
-                    {filterOptions.attributes.map((attr) => (
-                      <Tooltip key={attr}>
-                        <TooltipTrigger asChild>
-                          <button
-                            onClick={() => setFilters(prev => ({ ...prev, attribute: prev.attribute === attr ? undefined : attr }))}
-                            aria-label={`Filter by ${attr} attribute`}
-                            className={`relative w-12 h-12 rounded-md overflow-hidden transition-all ${
-                              filters.attribute === attr
-                                ? 'ring-2 ring-primary ring-offset-2 ring-offset-background'
-                                : 'opacity-60 hover:opacity-100'
-                            }`}
-                          >
-                            <Image
-                              src={getAttributeIcon(attr)}
-                              alt={attr}
-                              fill
-                              className="object-contain"
-                              unoptimized
-                            />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{attr}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    ))}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Attribute</label>
+                    {filters.attribute && (
+                      <Button variant="ghost" size="sm" onClick={() => setFilters(prev => ({ ...prev, attribute: undefined }))} className="h-6 text-xs">
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex justify-center">
+                    <div className="flex flex-wrap gap-3 justify-center max-w-3xl">
+                      {filterOptions.attributes.map((attr) => (
+                        <Tooltip key={attr}>
+                          <TooltipTrigger asChild>
+                            <button
+                              onClick={() => setFilters(prev => ({ ...prev, attribute: prev.attribute === attr ? undefined : attr }))}
+                              aria-label={`Filter by ${attr} attribute`}
+                              className={`relative w-[50px] h-[50px] rounded-lg overflow-hidden transition-all hover:scale-105 ${
+                                filters.attribute === attr
+                                  ? 'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg scale-105'
+                                  : 'opacity-60 hover:opacity-100'
+                              }`}
+                            >
+                              <Image
+                                src={getAttributeIcon(attr)}
+                                alt={attr}
+                                fill
+                                className="object-contain p-1"
+                                unoptimized
+                              />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{attr}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ))}
+                    </div>
                   </div>
                 </div>
+
+                <div className="border-t" />
 
                 {/* Weapon Type Filter */}
-                <div>
-                  <label className="text-sm font-medium mb-3 block">Weapon Type</label>
-                  <div className="flex flex-wrap gap-2">
-                    {filterOptions.weaponTypes.map((weapon) => (
-                      <Tooltip key={weapon}>
-                        <TooltipTrigger asChild>
-                          <button
-                            onClick={() => setFilters(prev => ({ ...prev, weaponType: prev.weaponType === weapon ? undefined : weapon }))}
-                            aria-label={`Filter by ${weapon} weapon`}
-                            className={`relative w-12 h-12 rounded-md overflow-hidden transition-all ${
-                              filters.weaponType === weapon
-                                ? 'ring-2 ring-primary ring-offset-2 ring-offset-background'
-                                : 'opacity-60 hover:opacity-100'
-                            }`}
-                          >
-                            <Image
-                              src={getWeaponTypeIcon(weapon)}
-                              alt={weapon}
-                              fill
-                              className="object-contain"
-                              unoptimized
-                            />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{weapon}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    ))}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Weapon Type</label>
+                    {filters.weaponType && (
+                      <Button variant="ghost" size="sm" onClick={() => setFilters(prev => ({ ...prev, weaponType: undefined }))} className="h-6 text-xs">
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex justify-center">
+                    <div className="flex flex-wrap gap-3 justify-center max-w-3xl">
+                      {filterOptions.weaponTypes.map((weapon) => (
+                        <Tooltip key={weapon}>
+                          <TooltipTrigger asChild>
+                            <button
+                              onClick={() => setFilters(prev => ({ ...prev, weaponType: prev.weaponType === weapon ? undefined : weapon }))}
+                              aria-label={`Filter by ${weapon} weapon`}
+                              className={`relative w-[50px] h-[50px] rounded-lg overflow-hidden transition-all hover:scale-105 ${
+                                filters.weaponType === weapon
+                                  ? 'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg scale-105'
+                                  : 'opacity-60 hover:opacity-100'
+                              }`}
+                            >
+                              <Image
+                                src={getWeaponTypeIcon(weapon)}
+                                alt={weapon}
+                                fill
+                                className="object-contain p-1"
+                                unoptimized
+                              />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{weapon}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ))}
+                    </div>
                   </div>
                 </div>
+
+                <div className="border-t" />
 
                 {/* Stance Filter */}
-                <div>
-                  <label className="text-sm font-medium mb-3 block">Stance</label>
-                  <div className="flex flex-wrap gap-2">
-                    {filterOptions.stances.map((stance) => (
-                      <Tooltip key={stance}>
-                        <TooltipTrigger asChild>
-                          <button
-                            onClick={() => setFilters(prev => ({ ...prev, stance: prev.stance === stance ? undefined : stance }))}
-                            aria-label={`Filter by ${stance} stance`}
-                            className={`relative w-12 h-12 rounded-md overflow-hidden transition-all ${
-                              filters.stance === stance
-                                ? 'ring-2 ring-primary ring-offset-2 ring-offset-background'
-                                : 'opacity-60 hover:opacity-100'
-                            }`}
-                          >
-                            <Image
-                              src={getStanceIcon(stance)}
-                              alt={stance}
-                              fill
-                              className="object-contain"
-                              unoptimized
-                            />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{stance}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    ))}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Stance</label>
+                    {filters.stance && (
+                      <Button variant="ghost" size="sm" onClick={() => setFilters(prev => ({ ...prev, stance: undefined }))} className="h-6 text-xs">
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex justify-center">
+                    <div className="flex flex-wrap gap-3 justify-center max-w-3xl">
+                      {filterOptions.stances.map((stance) => (
+                        <Tooltip key={stance}>
+                          <TooltipTrigger asChild>
+                            <button
+                              onClick={() => setFilters(prev => ({ ...prev, stance: prev.stance === stance ? undefined : stance }))}
+                              aria-label={`Filter by ${stance} stance`}
+                              className={`relative w-[50px] h-[50px] rounded-lg overflow-hidden transition-all hover:scale-105 ${
+                                filters.stance === stance
+                                  ? 'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg scale-105'
+                                  : 'opacity-60 hover:opacity-100'
+                              }`}
+                            >
+                              <Image
+                                src={getStanceIcon(stance)}
+                                alt={stance}
+                                fill
+                                className="object-contain p-1"
+                                unoptimized
+                              />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{stance}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ))}
+                    </div>
                   </div>
                 </div>
+
+                <div className="border-t" />
 
                 {/* Rarity Filter */}
-                <div>
-                  <label className="text-sm font-medium mb-3 block">Rarity</label>
-                  <div className="flex flex-wrap gap-2">
-                    {filterOptions.rarities.map((rarity) => (
-                      <Button
-                        key={rarity}
-                        variant={filters.rarity === rarity ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setFilters(prev => ({ ...prev, rarity: prev.rarity === rarity ? undefined : rarity }))}
-                      >
-                        {'⭐'.repeat(parseInt(rarity) || 1)}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Rarity</label>
+                    {filters.rarity && (
+                      <Button variant="ghost" size="sm" onClick={() => setFilters(prev => ({ ...prev, rarity: undefined }))} className="h-6 text-xs">
+                        Clear
                       </Button>
-                    ))}
+                    )}
+                  </div>
+                  <div className="flex justify-center">
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      {filterOptions.rarities.map((rarity) => (
+                        <button
+                          key={rarity}
+                          onClick={() => setFilters(prev => ({ ...prev, rarity: prev.rarity === rarity ? undefined : rarity }))}
+                          className={`w-[108px] h-[22px] flex items-center justify-center transition-all hover:scale-105 ${
+                            filters.rarity === rarity ? 'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg scale-105' : 'opacity-60 hover:opacity-100'
+                          }`}
+                          title={`${rarity} star rarity`}
+                          aria-label={`Filter by ${rarity} star rarity`}
+                        >
+                          <Image
+                            src={getRarityIcon(rarity)}
+                            alt={`${rarity} star`}
+                            width={108}
+                            height={22}
+                            unoptimized
+                            className="object-contain w-full h-full"
+                          />
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                {/* Gender Filter */}
-                <div>
-                  <label className="text-sm font-medium mb-3 block">Gender</label>
-                  <div className="flex flex-wrap gap-2">
-                    {filterOptions.genders.map((gender) => (
-                      <Button
-                        key={gender}
-                        variant={filters.gender === gender ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setFilters(prev => ({ ...prev, gender: prev.gender === gender ? undefined : gender }))}
-                      >
-                        {gender}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
+                <div className="border-t" />
 
                 {/* Race Filter */}
-                <div>
-                  <label className="text-sm font-medium mb-3 block">Race (Multi-select)</label>
-                  <div className="flex flex-wrap gap-2">
-                    {filterOptions.races.map((race) => (
-                      <Tooltip key={race}>
-                        <TooltipTrigger asChild>
-                          <button
-                            onClick={() => setFilters(prev => {
-                              const currentRaces = prev.race || [];
-                              const isSelected = currentRaces.includes(race);
-                              const newRaces = isSelected
-                                ? currentRaces.filter(r => r !== race)
-                                : [...currentRaces, race];
-                              return { ...prev, race: newRaces.length > 0 ? newRaces : undefined };
-                            })}
-                            aria-label={`Filter by ${race} race`}
-                            className={`relative w-12 h-12 rounded-md overflow-hidden transition-all ${
-                              filters.race?.includes(race)
-                                ? 'ring-2 ring-primary ring-offset-2 ring-offset-background'
-                                : 'opacity-60 hover:opacity-100'
-                            }`}
-                          >
-                            <Image
-                              src={getRaceIcon(race)}
-                              alt={race}
-                              fill
-                              className="object-contain"
-                              unoptimized
-                            />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{race}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    ))}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Race <span className="text-xs font-normal">(Multi-select)</span></label>
+                    {filters.race && filters.race.length > 0 && (
+                      <Button variant="ghost" size="sm" onClick={() => setFilters(prev => ({ ...prev, race: undefined }))} className="h-6 text-xs">
+                        Clear ({filters.race.length})
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex justify-center">
+                    <div className="flex flex-wrap gap-3 justify-center max-w-3xl">
+                      {filterOptions.races.map((race) => (
+                        <Tooltip key={race}>
+                          <TooltipTrigger asChild>
+                            <button
+                              onClick={() => setFilters(prev => {
+                                const currentRaces = prev.race || [];
+                                const isSelected = currentRaces.includes(race);
+                                const newRaces = isSelected
+                                  ? currentRaces.filter(r => r !== race)
+                                  : [...currentRaces, race];
+                                return { ...prev, race: newRaces.length > 0 ? newRaces : undefined };
+                              })}
+                              aria-label={`Filter by ${race} race`}
+                              className={`relative w-[50px] h-[50px] rounded-lg overflow-hidden transition-all hover:scale-105 ${
+                                filters.race?.includes(race)
+                                  ? 'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg scale-105'
+                                  : 'opacity-60 hover:opacity-100'
+                              }`}
+                            >
+                              <Image
+                                src={getRaceIcon(race)}
+                                alt={race}
+                                fill
+                                className="object-contain p-1"
+                                unoptimized
+                              />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{race}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t" />
+
+                {/* Gender Filter */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Gender</label>
+                    {filters.gender && (
+                      <Button variant="ghost" size="sm" onClick={() => setFilters(prev => ({ ...prev, gender: undefined }))} className="h-6 text-xs">
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex justify-center">
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      {filterOptions.genders.map((gender) => (
+                        <Button
+                          key={gender}
+                          variant={filters.gender === gender ? 'default' : 'outline'}
+                          size="default"
+                          onClick={() => setFilters(prev => ({ ...prev, gender: prev.gender === gender ? undefined : gender }))}
+                          className="min-w-[100px]"
+                        >
+                          {gender}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
             </ScrollArea>
 
             <div className="flex justify-between items-center pt-4 border-t">
-              <Button variant="outline" onClick={clearAllFilters}>
-                Clear All Filters
-              </Button>
-              <Button onClick={() => setFilterModalOpen(false)}>
-                Done
-              </Button>
+              <div className="text-sm text-muted-foreground">
+                {activeFilterCount > 0 && (
+                  <span>{activeFilterCount} filter{activeFilterCount !== 1 ? 's' : ''} active</span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={clearAllFilters} disabled={activeFilterCount === 0}>
+                  Clear All
+                </Button>
+                <Button onClick={() => setFilterModalOpen(false)}>
+                  Apply Filters
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>

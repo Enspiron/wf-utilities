@@ -37,12 +37,25 @@ export async function GET(request: Request) {
     for (const [key] of Object.entries(bgmData)) {
       if (key.startsWith(prefix)) {
         const songName = key.substring(prefix.length);
+        const primaryUrl = `https://wfjukebox.b-cdn.net/${key}.mp3`;
+        const musicFallback = `https://wfjukebox.b-cdn.net/music/character_unique/${devnickname}/${songName}.mp3`;
+        const githubFallback = `https://raw.githubusercontent.com/Enspiron/WorldFlipperPlayer/main/character_unique/${devnickname}/${songName}.mp3`;
+        
         themes.push({
           path: key,
           songName,
-          url: `https://wfjukebox.b-cdn.net/${key}.mp3`,
+          url: primaryUrl,
         });
       }
+    }
+
+    // If no themes found in bgm_asset.json, add fallback sources
+    if (themes.length === 0) {
+      themes.push({
+        path: `character_unique/${devnickname}/${devnickname}`,
+        songName: devnickname,
+        url: `https://wfjukebox.b-cdn.net/music/character_unique/${devnickname}/${devnickname}.mp3`,
+      });
     }
 
     return NextResponse.json({

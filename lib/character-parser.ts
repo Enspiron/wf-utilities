@@ -131,8 +131,9 @@ export function filterCharacters(
     if (filters.weaponType && char.weaponType !== filters.weaponType) return false;
     if (filters.race && filters.race.length > 0) {
       const charRaces = char.race.split(' / ').map(r => r.trim());
-      const hasMatch = filters.race.some(selectedRace => charRaces.includes(selectedRace));
-      if (!hasMatch) return false;
+      // All selected races must be present in the character's races (AND logic)
+      const hasAllRaces = filters.race.every(selectedRace => charRaces.includes(selectedRace));
+      if (!hasAllRaces) return false;
     }
     if (filters.gender && char.gender !== filters.gender) return false;
     if (filters.rarity && char.rarity !== filters.rarity) return false;
