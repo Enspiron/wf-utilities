@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, User, Image as ImageIcon, BookOpen, Loader2, Download, Monitor, Layers, Copy, MoveHorizontal, MoveVertical, Maximize2, Languages } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Search, User, Image as ImageIcon, BookOpen, Loader2, Download, Monitor, Layers, Copy, MoveHorizontal, MoveVertical, Maximize2, Languages, RotateCcw } from 'lucide-react';
 import Image from 'next/image';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -43,6 +43,8 @@ interface CharacterTextData {
   [id: string]: string[];
 }
 
+const EXCLUSIVE_EXPRESSIONS = ['anger.png', 'consent.png', 'consent_b.png', 'joy.png', 'normal.png', 'pride.png', 'surprise.png', 'think.png'];
+
 export default function FaceBuilder() {
   const [faces, setFaces] = useState<string[]>([]);
   const [faceUIData, setFaceUIData] = useState<FaceUIData>({});
@@ -64,6 +66,8 @@ export default function FaceBuilder() {
   const [expressionOffsetY, setExpressionOffsetY] = useState(233);
   const [copied, setCopied] = useState(false);
   const [language, setLanguage] = useState<'jp' | 'en' | 'both'>('both');
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -127,15 +131,13 @@ export default function FaceBuilder() {
   };
 
   const toggleExpression = (expression: string) => {
-    const exclusiveExpressions = ['anger.png', 'consent.png', 'consent_b.png', 'joy.png', 'normal.png', 'pride.png', 'surprise.png', 'think.png'];
-    
     setSelectedExpressions(prev => {
       const newSet = new Set(prev);
-      const isExclusive = exclusiveExpressions.includes(expression);
+      const isExclusive = EXCLUSIVE_EXPRESSIONS.includes(expression);
       
       if (isExclusive) {
         // For exclusive expressions, remove all other exclusive ones first
-        exclusiveExpressions.forEach(exp => newSet.delete(exp));
+        EXCLUSIVE_EXPRESSIONS.forEach(exp => newSet.delete(exp));
         // Toggle the clicked one
         if (prev.has(expression)) {
           // If it was already selected, just remove it (deselect)
@@ -168,6 +170,65 @@ export default function FaceBuilder() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const resetAdjustments = () => {
+    setExpressionScale(0.24);
+    setExpressionOffsetX(199);
+    setExpressionOffsetY(233);
+  };
+
+  const downloadComposite = async () => {
+    if (!selectedFace || !canvasRef.current) return;
+    setIsDownloading(true);
+
+    try {
+      const ctx = canvasRef.current.getContext('2d');
+      if (!ctx) throw new Error('Could not get canvas context');
+
+      // Clear canvas
+      ctx.clearRect(0, 0, 512, 512);
+
+      // Helper to load image
+      const loadImage = (url: string): Promise<HTMLImageElement> => {
+        return new Promise((resolve, reject) => {
+          const img = new window.Image();
+          img.crossOrigin = 'anonymous';
+          img.src = url;
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+        });
+      };
+
+      // Draw Base
+      const baseUrl = getImageUrl('story', `base_${selectedBase}.png`);
+      const baseImg = await loadImage(baseUrl);
+      ctx.drawImage(baseImg, 0, 0, 512, 512);
+
+      // Draw Expressions
+      for (const expression of Array.from(selectedExpressions)) {
+        const expUrl = getImageUrl('story', expression);
+        const expImg = await loadImage(expUrl);
+        
+        ctx.save();
+        ctx.translate(expressionOffsetX, expressionOffsetY);
+        ctx.scale(expressionScale, expressionScale);
+        ctx.drawImage(expImg, 0, 0, 512, 512);
+        ctx.restore();
+      }
+
+      // Trigger download
+      const dataUrl = canvasRef.current.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = `${selectedFace}_composite.png`;
+      link.href = dataUrl;
+      link.click();
+
+    } catch (error) {
+      console.error('Failed to generate composite:', error);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   const handleFileSelect = (type: 'ui' | 'story' | 'fullshot', file: string, variant?: string) => {
     setSelectedFile({ type, file, variant });
     setImageError(false);
@@ -197,7 +258,7 @@ export default function FaceBuilder() {
   };
 
   const getFullShotImageUrl = (faceName: string, variant: string) => {
-    return `https://wfjukebox.b-cdn.net/character/character_art/${faceName}/ui/full_shot_1440_1920_${variant}.png`;
+    return `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${faceName}/ui/full_shot_1440_1920_${variant}.png`;
   };
 
   const getFullShotPositioning = (faceName: string, variant: string) => {
@@ -222,10 +283,10 @@ export default function FaceBuilder() {
     // Construct URL based on type
     if (type === 'story') {
       // Story/expression files are in character_art/{faceName}/ui/story/
-      return `https://wfjukebox.b-cdn.net/character/character_art/${selectedFace}/ui/story/${cleanFile}`;
+      return `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${selectedFace}/ui/story/${cleanFile}`;
     } else {
       // UI files are in character_art/{faceName}/ui/
-      return `https://wfjukebox.b-cdn.net/character/character_art/${selectedFace}/ui/${cleanFile}`;
+      return `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${selectedFace}/ui/${cleanFile}`;
     }
   }, [selectedFace]);
 
@@ -257,6 +318,22 @@ export default function FaceBuilder() {
     return Array.isArray(variants) ? variants : [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFace, fullShotAttributes]);
+
+  const { exclusiveExps, otherExps } = useMemo(() => {
+    const exclusiveSet = new Set(EXCLUSIVE_EXPRESSIONS);
+    const exc: string[] = [];
+    const oth: string[] = [];
+    
+    availableExpressions.forEach(exp => {
+      if (exclusiveSet.has(exp)) {
+        exc.push(exp);
+      } else {
+        oth.push(exp);
+      }
+    });
+    
+    return { exclusiveExps: exc, otherExps: oth };
+  }, [availableExpressions]);
 
   if (loading) {
     return (
@@ -339,7 +416,7 @@ export default function FaceBuilder() {
                     <TooltipContent side="right" className="p-2">
                       <div className="flex flex-col gap-2">
                         <Image
-                          src={`https://wfjukebox.b-cdn.net/character/character_art/${face}/ui/battle_member_status_0.png`}
+                          src={`https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${face}/ui/battle_member_status_0.png`}
                           alt={face}
                           width={128}
                           height={128}
@@ -442,6 +519,26 @@ export default function FaceBuilder() {
                             <Copy className="h-3 w-3 mr-1" />
                             {copied ? 'Copied!' : 'Copy'}
                           </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={resetAdjustments}
+                              title="Reset Adjustments"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={copyEncoding}
+                            >
+                              <Copy className="h-3 w-3 mr-1" />
+                              {copied ? 'Copied!' : 'Copy'}
+                            </Button>
+                          </div>
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-3">
@@ -527,27 +624,44 @@ export default function FaceBuilder() {
                       </CardHeader>
                       <CardContent className="flex-1 overflow-hidden p-0">
                         <ScrollArea className="h-full">
-                          <div className="p-4 pt-0 space-y-1">
-                            {availableExpressions.map((expression) => {
-                              const exclusiveExpressions = ['anger.png', 'consent.png', 'consent_b.png', 'joy.png', 'normal.png', 'pride.png', 'surprise.png', 'think.png'];
-                              const isExclusive = exclusiveExpressions.includes(expression);
-                              
-                              return (
-                                <Button
-                                  key={expression}
-                                  variant={selectedExpressions.has(expression) ? 'default' : 'ghost'}
-                                  size="sm"
-                                  className="w-full justify-start text-left font-normal text-xs"
-                                  onClick={() => toggleExpression(expression)}
-                                >
-                                  <span className="truncate">
-                                    {isExclusive && '◉ '}
-                                    {!isExclusive && '☐ '}
-                                    {expression.replace('.png', '')}
-                                  </span>
-                                </Button>
-                              );
-                            })}
+                          <div className="p-4 pt-0 space-y-4">
+                            {exclusiveExps.length > 0 && (
+                              <div>
+                                <h4 className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Main Expressions</h4>
+                                <div className="space-y-1">
+                                  {exclusiveExps.map(expression => (
+                                    <Button
+                                      key={expression}
+                                      variant={selectedExpressions.has(expression) ? 'default' : 'ghost'}
+                                      size="sm"
+                                      className="w-full justify-start text-left font-normal text-xs"
+                                      onClick={() => toggleExpression(expression)}
+                                    >
+                                      <span className="truncate">◉ {expression.replace('.png', '')}</span>
+                                    </Button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {otherExps.length > 0 && (
+                              <div>
+                                <h4 className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Other Parts</h4>
+                                <div className="space-y-1">
+                                  {otherExps.map(expression => (
+                                    <Button
+                                      key={expression}
+                                      variant={selectedExpressions.has(expression) ? 'default' : 'ghost'}
+                                      size="sm"
+                                      className="w-full justify-start text-left font-normal text-xs"
+                                      onClick={() => toggleExpression(expression)}
+                                    >
+                                      <span className="truncate">☐ {expression.replace('.png', '')}</span>
+                                    </Button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </ScrollArea>
                       </CardContent>
@@ -565,6 +679,19 @@ export default function FaceBuilder() {
                           Base {selectedBase} {selectedExpressions.size > 0 && `+ ${selectedExpressions.size} expression${selectedExpressions.size > 1 ? 's' : ''}`}
                         </CardDescription>
                       </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={downloadComposite}
+                        disabled={isDownloading}
+                      >
+                        {isDownloading ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <Download className="h-4 w-4 mr-2" />
+                        )}
+                        Download
+                      </Button>
                     </div>
                   </CardHeader>
                   <CardContent className="flex-1 flex items-center justify-center p-6">
@@ -864,6 +991,9 @@ export default function FaceBuilder() {
           </div>
         )}
       </div>
+
+      {/* Hidden Canvas for Composition */}
+      <canvas ref={canvasRef} width={512} height={512} className="hidden" />
     </div>
   );
 }

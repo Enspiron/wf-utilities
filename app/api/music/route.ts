@@ -10,6 +10,20 @@ interface MusicTrack {
   subcategory: string;
   url: string;
   fallbackUrls: string[];
+  volume: number | null;
+  bpm: number | null;
+  trimStart: number | null;
+  loopStart: number | null;
+  loopEnd: number | null;
+  timingGroup: number | null;
+}
+
+function humanizeSegment(value: string): string {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
 function generateFallbackUrls(path: string): string[] {
@@ -40,16 +54,11 @@ function generateFallbackUrls(path: string): string[] {
 }
 
 function parseTrackPath(path: string): { category: string; subcategory: string; name: string } | null {
-  // Ignore character_unique tracks
-  if (path.includes('character_unique')) {
-    return null;
-  }
-
   // Remove 'bgm/' prefix
   const cleanPath = path.replace(/^bgm\//, '');
   const parts = cleanPath.split('/');
 
-  if (parts.length < 2) {
+  if (parts.length < 1 || !parts[0]) {
     return null;
   }
 
@@ -77,17 +86,65 @@ function parseTrackPath(path: string): { category: string; subcategory: string; 
   } else if (parts[0].startsWith('world_')) {
     // bgm/world_grass/battle/grass_battle_boss_boss
     const worldName = parts[0].replace('world_', '');
-    category = `World: ${worldName.charAt(0).toUpperCase() + worldName.slice(1)}`;
+    category = `World: ${humanizeSegment(worldName)}`;
     subcategory = parts[1] || 'Other';
     name = parts.slice(2).join('/') || parts[1];
+  } else if (parts[0] === 'character_unique') {
+    // bgm/character_unique/alk/alk_ceremony
+    category = 'Character Unique';
+    subcategory = parts[1] || 'General';
+    name = parts.slice(2).join('/') || parts[1] || cleanPath;
   } else {
-    return null;
+    // Keep unknown roots visible instead of dropping them.
+    category = humanizeSegment(parts[0]);
+    subcategory = parts[1] || 'General';
+    name = parts.slice(2).join('/') || parts[1] || cleanPath;
   }
 
   return {
     category,
-    subcategory: subcategory.charAt(0).toUpperCase() + subcategory.slice(1),
+    subcategory: humanizeSegment(subcategory),
     name
+  };
+}
+
+function parseNumberToken(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value !== 'string') return null;
+  const token = value.trim();
+  if (!token || token === '(None)') return null;
+  const parsed = Number(token);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseTimingMeta(raw: unknown): {
+  volume: number | null;
+  bpm: number | null;
+  trimStart: number | null;
+  loopStart: number | null;
+  loopEnd: number | null;
+  timingGroup: number | null;
+} {
+  if (!Array.isArray(raw)) {
+    return {
+      volume: null,
+      bpm: null,
+      trimStart: null,
+      loopStart: null,
+      loopEnd: null,
+      timingGroup: null,
+    };
+  }
+
+  return {
+    volume: parseNumberToken(raw[0]),
+    bpm: parseNumberToken(raw[1]),
+    trimStart: parseNumberToken(raw[2]),
+    loopStart: parseNumberToken(raw[3]),
+    loopEnd: parseNumberToken(raw[4]),
+    timingGroup: parseNumberToken(raw[5]),
   };
 }
 
@@ -110,16 +167,18 @@ export async function GET() {
 
     const tracks: MusicTrack[] = [];
 
-    for (const path of Object.keys(bgmData)) {
+    for (const [path, rawValue] of Object.entries(bgmData)) {
       const parsed = parseTrackPath(path);
       if (parsed) {
+        const timing = parseTimingMeta(rawValue);
         tracks.push({
           path,
           name: parsed.name,
           category: parsed.category,
           subcategory: parsed.subcategory,
           url: `${CDN_BASE_URL}/${path}.mp3`,
-          fallbackUrls: generateFallbackUrls(path)
+          fallbackUrls: generateFallbackUrls(path),
+          ...timing,
         });
       }
     }

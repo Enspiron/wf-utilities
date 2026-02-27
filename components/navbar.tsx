@@ -13,6 +13,7 @@ const navItems = [
   { href: '/orderedmap', label: 'OrderedMap', icon: FileJson },
   { href: '/characters', label: 'Characters', icon: Database },
   { href: '/items', label: 'Items', icon: Package },
+  { href: '/quests', label: 'Quests', icon: FileJson },
   { href: '/music', label: 'Music', icon: Music2 },
   { href: '/calendar', label: 'Calendar', icon: Calendar },
   { href: '/facebuilder', label: 'Face Builder', icon: User },
