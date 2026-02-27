@@ -14,6 +14,8 @@ type SearchParamValue = string | string[] | undefined;
 type AssetKind = 'audio' | 'image' | 'video' | 'file';
 
 type SharePageProps = {
+  // App Router supplies these as plain objects; some people type them as Promises.
+  // Your existing code expects Promises, so keep that shape.
   params: Promise<{ asset?: string[] }>;
   searchParams: Promise<Record<string, SearchParamValue>>;
 };
@@ -28,16 +30,21 @@ type ShareContext = {
   segments: string[];
   assetPath: string;
   assetUrl: string;
+
   sharePath: string;
   shareUrl: string;
+
   fileName: string;
   baseName: string;
   extension: string;
+
   kind: AssetKind;
   mimeType: string | null;
+
   exists: boolean;
   contentType: string | null;
   contentLength: number | null;
+
   title: string;
   description: string;
   previewImage: string | null;
@@ -49,14 +56,10 @@ function getSiteBaseUrl(): URL {
     try {
       return new URL(explicit);
     } catch {
-      // Ignore invalid URL values and use fallbacks below.
+      // ignore
     }
   }
-
-  if (process.env.VERCEL_URL) {
-    return new URL(`https://${process.env.VERCEL_URL}`);
-  }
-
+  if (process.env.VERCEL_URL) return new URL(`https://${process.env.VERCEL_URL}`);
   return new URL('http://localhost:3000');
 }
 
@@ -122,7 +125,10 @@ function guessMimeType(extension: string): string | null {
   if (extension === 'm4a') return 'audio/mp4';
   if (extension === 'ogv') return 'video/ogg';
   if (extension === 'mov') return 'video/quicktime';
-  return `${classifyByExtension(extension)}/${extension}`;
+  // fallback
+  const kind = classifyByExtension(extension);
+  if (kind === 'file') return null;
+  return `${kind}/${extension}`;
 }
 
 function toDisplayLabel(value: string): string {
@@ -157,6 +163,8 @@ function formatBytes(bytes: number | null): string | null {
   return `${gb.toFixed(2)} GB`;
 }
 
+// NOTE: This probe is only for your UI badges.
+// Discord itself will fetch your CDN URL; your HEAD tags (in head.tsx) are what matters for embeds.
 const probeAsset = cache(async (assetUrl: string): Promise<AssetProbe> => {
   try {
     let response = await fetch(assetUrl, {
@@ -165,6 +173,7 @@ const probeAsset = cache(async (assetUrl: string): Promise<AssetProbe> => {
       next: { revalidate: 900 },
     });
 
+    // Some CDNs disable HEAD; fallback to a 1-byte range GET
     if (!response.ok && response.status === 405) {
       response = await fetch(assetUrl, {
         method: 'GET',
@@ -174,9 +183,7 @@ const probeAsset = cache(async (assetUrl: string): Promise<AssetProbe> => {
       });
     }
 
-    if (!response.ok) {
-      return { exists: false, contentType: null, contentLength: null };
-    }
+    if (!response.ok) return { exists: false, contentType: null, contentLength: null };
 
     const contentTypeHeader = response.headers.get('content-type');
     const contentLengthHeader = response.headers.get('content-length');
@@ -197,12 +204,14 @@ const probeAsset = cache(async (assetUrl: string): Promise<AssetProbe> => {
 
 async function resolveShareContext(props: SharePageProps): Promise<ShareContext | null> {
   const [{ asset }, searchParams] = await Promise.all([props.params, props.searchParams]);
+
   const segments = normalizeAssetSegments(asset);
   if (!segments) return null;
 
   const siteBaseUrl = getSiteBaseUrl();
   const assetPath = segments.join('/');
   const assetUrl = `${CDN_ROOT}/${assetPath}`;
+
   const sharePath = `/share/${segments.map((segment) => encodeURIComponent(segment)).join('/')}`;
   const shareUrl = new URL(sharePath, siteBaseUrl).toString();
 
@@ -220,6 +229,7 @@ async function resolveShareContext(props: SharePageProps): Promise<ShareContext 
   const extensionKind = classifyByExtension(extension);
   const contentTypeKind = classifyByContentType(probe.contentType);
   const kind = contentTypeKind || extensionKind;
+
   const mimeType = probe.contentType || guessMimeType(extension);
 
   const title = titleOverride || `${toDisplayLabel(baseName) || baseName} · WF Share`;
@@ -234,7 +244,12 @@ async function resolveShareContext(props: SharePageProps): Promise<ShareContext 
   const description = descriptionOverride || `Shared ${kindLabel} from CDN: ${assetPath}`;
 
   const imageOverride = resolveOptionalUrl(imageOverrideRaw);
-  const defaultImage = kind === 'image' ? assetUrl : new URL('/favicon.ico', siteBaseUrl).toString();
+
+  // Better default image than favicon for Discord cards:
+  // Put a real 1200x630 image at /share-default.png in /public if you want.
+  const defaultShareImage = new URL('/share-default.png', siteBaseUrl).toString();
+  const defaultImage = kind === 'image' ? assetUrl : defaultShareImage;
+
   const previewImage = imageOverride || defaultImage;
 
   return {
@@ -259,10 +274,12 @@ async function resolveShareContext(props: SharePageProps): Promise<ShareContext 
 
 export async function generateMetadata(props: SharePageProps): Promise<Metadata> {
   const context = await resolveShareContext(props);
+
   if (!context) {
     return {
       title: 'Invalid Share Link',
       description: 'The requested shared asset link is invalid.',
+      robots: { index: false, follow: false },
     };
   }
 
@@ -272,6 +289,10 @@ export async function generateMetadata(props: SharePageProps): Promise<Metadata>
     alternates: { canonical: context.sharePath },
   } satisfies Pick<Metadata, 'title' | 'description' | 'alternates'>;
 
+  // IMPORTANT:
+  // Discord is most reliable with explicit OG meta tags for audio (og:audio + og:audio:type),
+  // which you should inject in app/share/[...asset]/head.tsx.
+  // So here, keep the OG card (title/desc/image/url), but don't depend on openGraph.audio.
   if (context.kind === 'audio') {
     return {
       ...baseMetadata,
@@ -282,21 +303,13 @@ export async function generateMetadata(props: SharePageProps): Promise<Metadata>
         url: context.shareUrl,
         siteName: 'World Flipper Share',
         images: context.previewImage ? [{ url: context.previewImage, alt: context.title }] : undefined,
-        audio: [{ url: context.assetUrl, type: context.mimeType || 'audio/mpeg' }],
       },
       twitter: {
-        card: 'player',
+        // Discord ignores twitter player cards; use a normal card.
+        card: 'summary_large_image',
         title: context.title,
         description: context.description,
         images: context.previewImage ? [context.previewImage] : undefined,
-        players: [
-          {
-            playerUrl: context.shareUrl,
-            streamUrl: context.assetUrl,
-            width: 1280,
-            height: 280,
-          },
-        ],
       },
     };
   }
@@ -371,16 +384,15 @@ export async function generateMetadata(props: SharePageProps): Promise<Metadata>
 
 export default async function ShareAssetPage(props: SharePageProps) {
   const context = await resolveShareContext(props);
+
   if (!context) {
     return (
-      <div className='min-h-[calc(100vh-4rem)] p-4 sm:p-6'>
-        <div className='mx-auto max-w-3xl'>
+      <div className="min-h-[calc(100vh-4rem)] p-4 sm:p-6">
+        <div className="mx-auto max-w-3xl">
           <Card>
             <CardHeader>
               <CardTitle>Invalid Share Link</CardTitle>
-              <CardDescription>
-                This share URL does not contain a valid asset path.
-              </CardDescription>
+              <CardDescription>This share URL does not contain a valid asset path.</CardDescription>
             </CardHeader>
           </Card>
         </div>
@@ -391,57 +403,71 @@ export default async function ShareAssetPage(props: SharePageProps) {
   const sizeLabel = formatBytes(context.contentLength);
 
   return (
-    <div className='min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.08),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(251,191,36,0.07),transparent_45%)] p-4 pb-8 sm:p-6'>
-      <div className='mx-auto max-w-4xl space-y-4'>
-        <Card className='border-border/60 bg-background/90 backdrop-blur'>
+    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.08),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(251,191,36,0.07),transparent_45%)] p-4 pb-8 sm:p-6">
+      <div className="mx-auto max-w-4xl space-y-4">
+        <Card className="border-border/60 bg-background/90 backdrop-blur">
           <CardHeader>
-            <CardTitle className='break-all text-xl'>{context.title}</CardTitle>
-            <CardDescription className='break-all'>{context.description}</CardDescription>
-            <div className='flex flex-wrap gap-2 pt-1'>
-              <Badge variant='outline'>{context.kind}</Badge>
-              {context.mimeType && <Badge variant='outline'>{context.mimeType}</Badge>}
-              {sizeLabel && <Badge variant='outline'>{sizeLabel}</Badge>}
-              <Badge variant={context.exists ? 'secondary' : 'outline'}>{context.exists ? 'Available' : 'Not Found'}</Badge>
+            <CardTitle className="break-all text-xl">{context.title}</CardTitle>
+            <CardDescription className="break-all">{context.description}</CardDescription>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Badge variant="outline">{context.kind}</Badge>
+              {context.mimeType && <Badge variant="outline">{context.mimeType}</Badge>}
+              {sizeLabel && <Badge variant="outline">{sizeLabel}</Badge>}
+              <Badge variant={context.exists ? 'secondary' : 'outline'}>
+                {context.exists ? 'Available' : 'Not Found'}
+              </Badge>
             </div>
           </CardHeader>
-          <CardContent className='space-y-3'>
-            <p className='rounded-md border bg-muted/20 p-2 font-mono text-xs text-muted-foreground'>
+
+          <CardContent className="space-y-3">
+            <p className="rounded-md border bg-muted/20 p-2 font-mono text-xs text-muted-foreground">
               {context.assetPath}
             </p>
 
-            <div className='rounded-lg border bg-background/60 p-3'>
+            <div className="rounded-lg border bg-background/60 p-3">
               {context.kind === 'image' ? (
-                <div className='flex justify-center'>
+                <div className="flex justify-center">
                   <Image
                     src={context.assetUrl}
                     alt={context.title}
                     width={1600}
                     height={900}
-                    unoptimized={true}
-                    className='h-auto max-h-[70vh] w-auto max-w-full rounded-md border bg-muted/20'
+                    unoptimized
+                    className="h-auto max-h-[70vh] w-auto max-w-full rounded-md border bg-muted/20"
                   />
                 </div>
               ) : context.kind === 'audio' ? (
-                <audio controls preload='metadata' className='w-full'>
+                <audio controls preload="metadata" className="w-full">
                   <source src={context.assetUrl} type={context.mimeType || 'audio/mpeg'} />
                 </audio>
               ) : context.kind === 'video' ? (
-                <video controls preload='metadata' className='max-h-[70vh] w-full rounded-md border bg-black'>
+                <video controls preload="metadata" className="max-h-[70vh] w-full rounded-md border bg-black">
                   <source src={context.assetUrl} type={context.mimeType || 'video/mp4'} />
                 </video>
               ) : (
-                <p className='text-sm text-muted-foreground'>Preview is not available for this file type.</p>
+                <p className="text-sm text-muted-foreground">Preview is not available for this file type.</p>
               )}
             </div>
 
-            <div className='flex flex-wrap gap-2'>
-              <a href={context.assetUrl} target='_blank' rel='noopener noreferrer'>
+            <div className="flex flex-wrap gap-2">
+              <a href={context.assetUrl} target="_blank" rel="noopener noreferrer">
                 <Button>Open CDN File</Button>
               </a>
-              <a href={context.shareUrl} target='_blank' rel='noopener noreferrer'>
-                <Button variant='outline'>Open Share URL</Button>
+              <a href={context.shareUrl} target="_blank" rel="noopener noreferrer">
+                <Button variant="outline">Open Share URL</Button>
               </a>
             </div>
+
+            {context.kind === 'audio' && (
+              <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground">Discord embed note</p>
+                <p className="mt-1">
+                  For Discord to reliably detect audio, add <span className="font-mono">og:audio</span> tags in{' '}
+                  <span className="font-mono">app/share/[...asset]/head.tsx</span>.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
