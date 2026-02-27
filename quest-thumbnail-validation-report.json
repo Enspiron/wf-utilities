@@ -1,0 +1,38 @@
+{
+  "generatedAt": "2026-02-26T17:38:56.902Z",
+  "totals": {
+    "urls": 1046,
+    "ok": 1046,
+    "fail": 0
+  },
+  "categories": [
+    {
+      "category": "boss_battle",
+      "unique_thumbnail_urls": 0,
+      "ok": 0,
+      "fail": 0,
+      "sample_failed": []
+    },
+    {
+      "category": "event",
+      "unique_thumbnail_urls": 660,
+      "ok": 660,
+      "fail": 0,
+      "sample_failed": []
+    },
+    {
+      "category": "practice",
+      "unique_thumbnail_urls": 58,
+      "ok": 58,
+      "fail": 0,
+      "sample_failed": []
+    },
+    {
+      "category": "root",
+      "unique_thumbnail_urls": 328,
+      "ok": 328,
+      "fail": 0,
+      "sample_failed": []
+    }
+  ]
+}
