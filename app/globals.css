@@ -80,6 +80,18 @@
     min-height: 100%;
     overflow-x: hidden;
     overflow-y: auto;
+    scrollbar-gutter: stable both-edges;
+  }
+
+  /* Radix Select uses react-remove-scroll which injects margin/padding compensation.
+     We already reserve gutter space, so compensation causes visible layout shift. */
+  body[data-scroll-locked] {
+    margin-right: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .with-scroll-bars-hidden {
+    padding-right: 0 !important;
   }
   
   /* Pixel-perfect image rendering */

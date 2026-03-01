@@ -50,6 +50,34 @@ type ShareContext = {
   previewImage: string | null;
 };
 
+function buildAssetCandidates(assetPath: string, extension: string): string[] {
+  const normalizedPath = assetPath.replace(/^\/+/, '');
+  const candidates: string[] = [];
+
+  const pushCandidate = (pathLike: string) => {
+    const normalized = pathLike.replace(/^\/+/, '');
+    const url = `${CDN_ROOT}/${normalized}`;
+    if (!candidates.includes(url)) candidates.push(url);
+  };
+
+  if (extension === 'json') {
+    if (normalizedPath.startsWith('orderedmaps/')) {
+      pushCandidate(normalizedPath);
+    } else if (normalizedPath.startsWith('datalist/') || normalizedPath.startsWith('datalist_en/')) {
+      pushCandidate(`orderedmaps/${normalizedPath}`);
+      pushCandidate(normalizedPath);
+    } else {
+      pushCandidate(normalizedPath);
+      pushCandidate(`orderedmaps/datalist/${normalizedPath}`);
+      pushCandidate(`orderedmaps/datalist_en/${normalizedPath}`);
+    }
+    return candidates;
+  }
+
+  pushCandidate(normalizedPath);
+  return candidates;
+}
+
 function getSiteBaseUrl(): URL {
   const explicit = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL;
   if (explicit) {
@@ -210,7 +238,6 @@ async function resolveShareContext(props: SharePageProps): Promise<ShareContext 
 
   const siteBaseUrl = getSiteBaseUrl();
   const assetPath = segments.join('/');
-  const assetUrl = `${CDN_ROOT}/${assetPath}`;
 
   const sharePath = `/share/${segments.map((segment) => encodeURIComponent(segment)).join('/')}`;
   const shareUrl = new URL(sharePath, siteBaseUrl).toString();
@@ -218,13 +245,19 @@ async function resolveShareContext(props: SharePageProps): Promise<ShareContext 
   const fileName = segments[segments.length - 1];
   const extension = getExtension(fileName);
   const baseName = extension ? fileName.slice(0, -(extension.length + 1)) : fileName;
+  const assetCandidates = buildAssetCandidates(assetPath, extension);
 
-  const [probe, titleOverride, descriptionOverride, imageOverrideRaw] = await Promise.all([
-    probeAsset(assetUrl),
+  const [candidateProbes, titleOverride, descriptionOverride, imageOverrideRaw] = await Promise.all([
+    Promise.all(assetCandidates.map((candidate) => probeAsset(candidate))),
     Promise.resolve(parseTextOverride(getFirstParam(searchParams.title))),
     Promise.resolve(parseTextOverride(getFirstParam(searchParams.description))),
     Promise.resolve(getFirstParam(searchParams.image)),
   ]);
+
+  const existingCandidateIndex = candidateProbes.findIndex((probe) => probe.exists);
+  const selectedIndex = existingCandidateIndex >= 0 ? existingCandidateIndex : 0;
+  const assetUrl = assetCandidates[selectedIndex];
+  const probe = candidateProbes[selectedIndex];
 
   const extensionKind = classifyByExtension(extension);
   const contentTypeKind = classifyByContentType(probe.contentType);
@@ -232,7 +265,7 @@ async function resolveShareContext(props: SharePageProps): Promise<ShareContext 
 
   const mimeType = probe.contentType || guessMimeType(extension);
 
-  const title = titleOverride || `${toDisplayLabel(baseName) || baseName} · WF Share`;
+  const title = titleOverride || `${toDisplayLabel(baseName) || baseName} - WF Share`;
   const kindLabel =
     kind === 'audio'
       ? 'audio asset'
@@ -474,3 +507,4 @@ export default async function ShareAssetPage(props: SharePageProps) {
     </div>
   );
 }
+

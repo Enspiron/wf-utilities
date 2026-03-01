@@ -51,7 +51,7 @@ interface MusicTrack {
 type SortMode = 'name_asc' | 'name_desc' | 'category' | 'path';
 type PlayerState = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 60;
 const TRACK_TONES = [
   'from-cyan-500/20 via-cyan-400/5 to-sky-500/15 border-cyan-500/25',
   'from-orange-500/20 via-amber-400/5 to-yellow-500/15 border-orange-500/25',
@@ -193,6 +193,7 @@ export default function MusicPage() {
   const [sortMode, setSortMode] = useState<SortMode>('name_asc');
   const [fallbackOnly, setFallbackOnly] = useState(false);
   const [failedOnly, setFailedOnly] = useState(false);
+  const [compactRows, setCompactRows] = useState(false);
   const [page, setPage] = useState(1);
 
   const [queue, setQueue] = useState<string[]>([]);
@@ -795,7 +796,7 @@ export default function MusicPage() {
 
   return (
     <div className='min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.1),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(251,191,36,0.08),transparent_45%)] pb-36'>
-      <div className='mx-auto w-full max-w-7xl space-y-4 p-4 sm:p-6'>
+      <div className='mx-auto w-full max-w-[1600px] space-y-4 p-4 sm:p-6'>
         <Card className='border-border/60 bg-background/85 backdrop-blur'>
           <CardContent className='p-5 sm:p-6'>
             <div className='flex flex-wrap items-start justify-between gap-4'>
@@ -834,14 +835,15 @@ export default function MusicPage() {
           </Card>
         )}
 
-        <div className='grid gap-4 xl:grid-cols-[220px_220px_minmax(0,1fr)_320px]'>
-          <Card className='flex min-h-[300px] flex-col'>
+        <div className='grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[260px_minmax(0,1fr)_320px]'>
+          <div className='grid gap-4 sm:grid-cols-2 xl:sticky xl:top-20 xl:grid-cols-1 xl:self-start'>
+          <Card className='flex min-h-[280px] flex-col'>
             <CardHeader className='pb-3'>
               <CardTitle className='text-base'>Categories</CardTitle>
               <CardDescription>Click to navigate</CardDescription>
             </CardHeader>
             <CardContent className='min-h-0 flex-1'>
-              <ScrollArea className='h-[410px] pr-2'>
+              <ScrollArea className='h-[320px] pr-2'>
                 <div className='space-y-1.5'>
                   <Button
                     variant={categoryFilter === 'all' ? 'default' : 'outline'}
@@ -877,7 +879,7 @@ export default function MusicPage() {
             </CardContent>
           </Card>
 
-          <Card className='flex min-h-[300px] flex-col'>
+          <Card className='flex min-h-[280px] flex-col'>
             <CardHeader className='pb-3'>
               <CardTitle className='text-base'>Subcategories</CardTitle>
               <CardDescription className='truncate'>
@@ -885,7 +887,7 @@ export default function MusicPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className='min-h-0 flex-1'>
-              <ScrollArea className='h-[410px] pr-2'>
+              <ScrollArea className='h-[320px] pr-2'>
                 <div className='space-y-1.5'>
                   <Button
                     variant={safeSubcategoryFilter === 'all' ? 'default' : 'outline'}
@@ -920,6 +922,7 @@ export default function MusicPage() {
               </ScrollArea>
             </CardContent>
           </Card>
+          </div>
 
           <div className='space-y-4'>
             <Card>
@@ -966,6 +969,13 @@ export default function MusicPage() {
 
                 <div className='flex flex-wrap items-center gap-2'>
                   <Button
+                    variant={compactRows ? 'default' : 'outline'}
+                    size='sm'
+                    onClick={() => setCompactRows((prev) => !prev)}
+                  >
+                    {compactRows ? 'Compact Rows: On' : 'Compact Rows: Off'}
+                  </Button>
+                  <Button
                     variant={fallbackOnly ? 'default' : 'outline'}
                     size='sm'
                     onClick={() => {
@@ -997,6 +1007,7 @@ export default function MusicPage() {
                       setCategoryFilter('all');
                       setSubcategoryFilter('all');
                       setSortMode('name_asc');
+                      setCompactRows(false);
                       setFallbackOnly(false);
                       setFailedOnly(false);
                       setPage(1);
@@ -1007,12 +1018,12 @@ export default function MusicPage() {
                   <Button
                     variant={showMobileQueue ? 'default' : 'outline'}
                     size='sm'
-                    className='xl:hidden'
+                    className='2xl:hidden'
                     onClick={() => setShowMobileQueue((prev) => !prev)}
                   >
                     {showMobileQueue ? 'Hide Queue' : `Show Queue (${queue.length})`}
                   </Button>
-                  <div className='ml-auto flex items-center gap-2 text-[11px] text-muted-foreground'>
+                  <div className='ml-auto hidden items-center gap-2 text-[11px] text-muted-foreground xl:flex'>
                     <span className='rounded border px-2 py-0.5'>/ search</span>
                     <span className='rounded border px-2 py-0.5'>Space play/pause</span>
                     <span className='rounded border px-2 py-0.5'>J/K prev/next</span>
@@ -1068,8 +1079,15 @@ export default function MusicPage() {
               </CardHeader>
               <CardContent className='space-y-2'>
                 {visibleTracks.length > 0 ? (
-                  <>
-                    {visibleTracks.map((track) => {
+                  <div className='overflow-hidden rounded-lg border bg-background/30'>
+                    <div className='grid grid-cols-[44px_minmax(0,1fr)] items-center gap-2 border-b bg-muted/30 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground xl:grid-cols-[44px_minmax(0,1fr)_110px]'>
+                      <span>Play</span>
+                      <span>Track</span>
+                      <span className='hidden text-right xl:block'>Actions</span>
+                    </div>
+                    <ScrollArea className={cn(compactRows ? 'h-[52vh]' : 'h-[62vh]')}>
+                      <div className='space-y-2 p-2'>
+                        {visibleTracks.map((track, index) => {
                       const isActive = activePath === track.path;
                       const isQueued = queueSet.has(track.path);
                       const isFailed = failedPaths.has(track.path);
@@ -1078,6 +1096,7 @@ export default function MusicPage() {
                       const rowSources = getTrackSources(track);
                       const rowSourceUrl = rowSources[Math.min(sourceIndex, Math.max(rowSources.length - 1, 0))] || track.url;
                       const durationForRow = durationByPath[track.path] || 0;
+                      const rowNumber = rangeStart + index;
                       const sourceBadgeClass = isFailed
                         ? 'border-destructive/50 bg-destructive/10 text-destructive'
                         : sourceIndex > 0
@@ -1088,16 +1107,17 @@ export default function MusicPage() {
                         <div
                           key={track.path}
                           className={cn(
-                            'rounded-lg border p-3 transition',
+                            'rounded-lg border transition',
+                            compactRows ? 'p-2' : 'p-3',
                             isActive ? 'border-primary bg-primary/5 shadow-sm' : 'bg-background/70 hover:bg-accent/40'
                           )}
                         >
-                          <div className='flex items-start gap-3'>
+                          <div className='flex flex-wrap items-start gap-3'>
                             <Button
                               type='button'
                               variant={isActive ? 'default' : 'outline'}
                               size='icon'
-                              className='mt-1 h-9 w-9 shrink-0'
+                              className={cn('shrink-0', compactRows ? 'mt-0.5 h-8 w-8' : 'mt-1 h-9 w-9')}
                               onClick={() => handlePlayTrack(track.path)}
                               title='Play / Pause'
                             >
@@ -1110,21 +1130,26 @@ export default function MusicPage() {
 
                             <div className='min-w-0 flex-1'>
                               <div className='flex items-start gap-3'>
-                                <div
-                                  className={cn(
-                                    'mt-0.5 flex h-11 w-16 shrink-0 items-center justify-center rounded-md border bg-gradient-to-br',
-                                    toneClass
-                                  )}
-                                >
-                                  <Music2 className='h-4 w-4 text-foreground/80' />
-                                </div>
+                                {!compactRows && (
+                                  <div
+                                    className={cn(
+                                      'mt-0.5 flex h-11 w-16 shrink-0 items-center justify-center rounded-md border bg-gradient-to-br',
+                                      toneClass
+                                    )}
+                                  >
+                                    <Music2 className='h-4 w-4 text-foreground/80' />
+                                  </div>
+                                )}
                                 <div className='min-w-0 flex-1'>
-                                  <p className='truncate text-sm font-semibold'>{toDisplayLabel(track.name)}</p>
+                                  <p className={cn('truncate font-semibold', compactRows ? 'text-[13px]' : 'text-sm')}>
+                                    <span className='mr-1.5 font-mono text-[11px] text-muted-foreground'>#{rowNumber}</span>
+                                    {toDisplayLabel(track.name)}
+                                  </p>
                                   <p className='truncate text-[11px] text-muted-foreground'>{track.path}</p>
                                 </div>
                               </div>
 
-                              <div className='mt-2 flex flex-wrap items-center gap-1.5'>
+                              <div className={cn('flex flex-wrap items-center gap-1.5', compactRows ? 'mt-1.5' : 'mt-2')}>
                                 <Badge variant='outline'>{track.category}</Badge>
                                 <Badge variant='outline'>{track.subcategory}</Badge>
                                 {typeof track.loopStart === 'number' && Number.isFinite(track.loopStart) && (
@@ -1142,43 +1167,49 @@ export default function MusicPage() {
                               </div>
                             </div>
 
-                            <div className='flex shrink-0 items-center gap-1'>
+                            <div className='flex w-full items-center justify-start gap-1 pt-1 xl:w-auto xl:justify-end xl:pt-0'>
                               <Button
                                 type='button'
                                 variant={isQueued ? 'default' : 'outline'}
                                 size='icon'
-                                className='h-8 w-8'
+                                className={compactRows ? 'h-7 w-7' : 'h-8 w-8'}
                                 onClick={() => (isQueued ? removeFromQueue(track.path) : addToQueue(track.path))}
                                 title={isQueued ? 'Remove from queue' : 'Add to queue'}
                               >
-                                {isQueued ? <X className='h-3.5 w-3.5' /> : <Plus className='h-3.5 w-3.5' />}
+                                {isQueued ? (
+                                  <X className={compactRows ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+                                ) : (
+                                  <Plus className={compactRows ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+                                )}
                               </Button>
                               <Button
                                 type='button'
                                 variant={copiedPath === track.path ? 'default' : 'outline'}
                                 size='icon'
-                                className='h-8 w-8'
+                                className={compactRows ? 'h-7 w-7' : 'h-8 w-8'}
                                 onClick={() => void handleCopyPath(track.path)}
                                 title='Copy path'
                               >
-                                <Copy className='h-3.5 w-3.5' />
+                                <Copy className={compactRows ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
                               </Button>
                               <Button
                                 type='button'
                                 variant='outline'
                                 size='icon'
-                                className='h-8 w-8'
+                                className={compactRows ? 'h-7 w-7' : 'h-8 w-8'}
                                 onClick={() => window.open(rowSourceUrl, '_blank', 'noopener,noreferrer')}
                                 title='Open active source URL'
                               >
-                                <ExternalLink className='h-3.5 w-3.5' />
+                                <ExternalLink className={compactRows ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
                               </Button>
                             </div>
                           </div>
                         </div>
                       );
                     })}
-                  </>
+                      </div>
+                    </ScrollArea>
+                  </div>
                 ) : (
                   <div className='rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground'>
                     No tracks matched the current filters.
@@ -1189,7 +1220,7 @@ export default function MusicPage() {
 
             {showMobileQueue && (
               <QueuePanel
-                className='xl:hidden'
+                className='2xl:hidden'
                 queueTracks={queueTracks}
                 activePath={activePath}
                 queueCursor={queueCursor}
@@ -1201,7 +1232,7 @@ export default function MusicPage() {
           </div>
 
           <QueuePanel
-            className='hidden xl:flex'
+            className='hidden 2xl:flex 2xl:self-start 2xl:sticky 2xl:top-20'
             queueTracks={queueTracks}
             activePath={activePath}
             queueCursor={queueCursor}
@@ -1213,7 +1244,7 @@ export default function MusicPage() {
       </div>
 
       <div className='fixed bottom-3 left-3 right-3 z-40'>
-        <div className='mx-auto max-w-7xl'>
+        <div className='mx-auto max-w-[1600px]'>
           <Card className='border-border/70 bg-background/95 shadow-2xl backdrop-blur'>
             <CardContent className='p-3 sm:p-4'>
               <div className='grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto]'>
