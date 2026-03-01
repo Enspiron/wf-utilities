@@ -102,6 +102,10 @@ export default function FaceBuilder() {
     return `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${faceName}/ui/story/${toPngFileName(file)}`;
   }, [toPngFileName]);
 
+  const toProxyImageUrl = useCallback((url: string) => {
+    return `/api/assets/image?url=${encodeURIComponent(url)}`;
+  }, []);
+
   const getStoryTrimKey = useCallback((faceName: string, file: string) => {
     return `character/${faceName}/ui/story/${normalizeAssetStem(file)}`;
   }, [normalizeAssetStem]);
@@ -367,17 +371,18 @@ export default function FaceBuilder() {
     const encodedPng = encodeURIComponent(normalizedPng);
     const encodedOriginal = encodeURIComponent(original);
 
-    const urls = [
+    const remoteUrls = [
       `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${faceName}/ui/story/${normalizedPng}`,
       `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${encodedFace}/ui/story/${encodedPng}`
     ];
 
     if (encodedOriginal !== encodedPng) {
-      urls.push(`https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${encodedFace}/ui/story/${encodedOriginal}`);
+      remoteUrls.push(`https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${encodedFace}/ui/story/${encodedOriginal}`);
     }
 
-    return Array.from(new Set(urls));
-  }, [toPngFileName]);
+    // Use same-origin proxy URLs so canvas export does not rely on CDN CORS headers.
+    return Array.from(new Set(remoteUrls.map((url) => toProxyImageUrl(url))));
+  }, [toPngFileName, toProxyImageUrl]);
 
   const loadImageWithFallback = useCallback(async (urls: string[]) => {
     for (const url of urls) {
