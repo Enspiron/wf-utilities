@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
@@ -117,7 +117,7 @@ function splitLabeledText(input: string | null): { title: string | null; body: s
   return { title: null, body: text };
 }
 
-export default function ManaBoardPage() {
+function ManaBoardPageClient() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -656,6 +656,27 @@ export default function ManaBoardPage() {
         </div>
       </div>
     </TooltipProvider>
+  );
+}
+
+function ManaBoardPageFallback() {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
+      <div className="container mx-auto flex items-center justify-center px-4 py-10 md:px-6">
+        <div className="flex items-center gap-2 rounded-md border border-dashed border-border/70 bg-card/60 px-4 py-3 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading mana board...
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function ManaBoardPage() {
+  return (
+    <Suspense fallback={<ManaBoardPageFallback />}>
+      <ManaBoardPageClient />
+    </Suspense>
   );
 }
 
