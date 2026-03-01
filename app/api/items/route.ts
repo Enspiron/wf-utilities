@@ -17,14 +17,30 @@ export interface Item {
 
 type ItemData = string[];
 type DataMap = Record<string, ItemData>;
+const DATA_FALLBACK_BASE = 'https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data';
+
+async function loadDataMap(relativePath: string): Promise<DataMap> {
+  const localPath = path.join(process.cwd(), 'public', 'data', ...relativePath.split('/'));
+
+  if (fs.existsSync(localPath)) {
+    return JSON.parse(fs.readFileSync(localPath, 'utf-8')) as DataMap;
+  }
+
+  const remoteUrl = `${DATA_FALLBACK_BASE}/${relativePath}`;
+  const response = await fetch(remoteUrl, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${remoteUrl} (${response.status})`);
+  }
+
+  return (await response.json()) as DataMap;
+}
 
 export async function GET() {
   try {
-    const itemsPath = path.join(process.cwd(), 'public', 'data', 'datalist_en', 'item', 'item.json');
-    const equipmentPath = path.join(process.cwd(), 'public', 'data', 'datalist_en', 'item', 'equipment.json');
-
-    const itemsData = JSON.parse(fs.readFileSync(itemsPath, 'utf-8')) as DataMap;
-    const equipmentData = JSON.parse(fs.readFileSync(equipmentPath, 'utf-8')) as DataMap;
+    const [itemsData, equipmentData] = await Promise.all([
+      loadDataMap('datalist_en/item/item.json'),
+      loadDataMap('datalist_en/item/equipment.json'),
+    ]);
 
     const items: Item[] = [];
 
