@@ -55,6 +55,7 @@ interface TrimRect {
 }
 
 const OTHER_PART_EXPRESSIONS = ['shame.png', 'sweat.png', 'unknown.png'];
+const DATA_FALLBACK_BASE = 'https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data';
 
 export default function FaceBuilder() {
   const [faces, setFaces] = useState<string[]>([]);
@@ -124,49 +125,63 @@ export default function FaceBuilder() {
 
   const loadData = async () => {
     try {
-      const fetchTrimmedImageData = async (): Promise<TrimmedImageData> => {
-        const primary = await fetch('/data/datalist/generated/trimmed_image.json');
-        if (primary.ok) {
-          const data = await primary.json();
-          if (data && typeof data === 'object') {
-            return data as TrimmedImageData;
+      const fetchJsonWithFallback = async <T,>(urls: string[]): Promise<T> => {
+        for (const url of urls) {
+          try {
+            const response = await fetch(url, { cache: 'no-store' });
+            if (!response.ok) continue;
+            return (await response.json()) as T;
+          } catch {
+            continue;
           }
         }
-
-        const fallback = await fetch('/data/datalist_en/generated/trimmed_image.json');
-        if (fallback.ok) {
-          const data = await fallback.json();
-          if (data && typeof data === 'object') {
-            return data as TrimmedImageData;
-          }
-        }
-
-        return {};
+        throw new Error(`Failed to fetch JSON from all sources: ${urls.join(', ')}`);
       };
 
-      const [facesRes, faceUIRes, characterRes, fullShotRes, charTextJPRes, charTextENRes, trimmedImageDataRes] = await Promise.all([
-        fetch('/data/faces.json'),
-        fetch('/data/face-ui.json'),
-        fetch('/data/character.json'),
-        fetch('/data/full_shot_image_attribute.json'),
+      const fetchTrimmedImageData = async (): Promise<TrimmedImageData> => {
+        try {
+          return await fetchJsonWithFallback<TrimmedImageData>([
+            '/data/datalist/generated/trimmed_image.json',
+            '/data/datalist_en/generated/trimmed_image.json',
+            `${DATA_FALLBACK_BASE}/datalist/generated/trimmed_image.json`,
+            `${DATA_FALLBACK_BASE}/datalist_en/generated/trimmed_image.json`,
+          ]);
+        } catch {
+          return {};
+        }
+      };
+
+      const [facesData, faceUIDataRes, characterDataRes, fullShotData, charTextJP, charTextEN, trimmedImageDataRes] = await Promise.all([
+        fetchJsonWithFallback<{ faces: string[] }>([
+          '/data/faces.json',
+          `${DATA_FALLBACK_BASE}/faces.json`,
+        ]),
+        fetchJsonWithFallback<FaceUIData>([
+          '/data/face-ui.json',
+          `${DATA_FALLBACK_BASE}/face-ui.json`,
+        ]),
+        fetchJsonWithFallback<CharacterData>([
+          '/data/character.json',
+          `${DATA_FALLBACK_BASE}/character.json`,
+        ]),
+        fetchJsonWithFallback<FullShotAttribute>([
+          '/data/full_shot_image_attribute.json',
+          `${DATA_FALLBACK_BASE}/full_shot_image_attribute.json`,
+        ]),
         fetch('/api/character-text?lang=jp'),
         fetch('/api/character-text?lang=en'),
         fetchTrimmedImageData()
       ]);
-      
-      const facesData = await facesRes.json();
-      const faceUIDataRes = await faceUIRes.json();
-      const characterDataRes = await characterRes.json();
-      const fullShotData = await fullShotRes.json();
-      const charTextJP = await charTextJPRes.json();
-      const charTextEN = await charTextENRes.json();
+
+      const charTextJPData = charTextJP.ok ? await charTextJP.json() : {};
+      const charTextENData = charTextEN.ok ? await charTextEN.json() : {};
       
       setFaces(Array.isArray(facesData.faces) ? facesData.faces : []);
       setFaceUIData(faceUIDataRes && typeof faceUIDataRes === 'object' ? faceUIDataRes : {});
       setCharacterData(characterDataRes && typeof characterDataRes === 'object' ? characterDataRes : {});
       setFullShotAttributes(fullShotData && typeof fullShotData === 'object' ? fullShotData : {});
-      setCharacterTextJP(charTextJP?.data && typeof charTextJP.data === 'object' ? charTextJP.data : {});
-      setCharacterTextEN(charTextEN?.data && typeof charTextEN.data === 'object' ? charTextEN.data : {});
+      setCharacterTextJP(charTextJPData?.data && typeof charTextJPData.data === 'object' ? charTextJPData.data : {});
+      setCharacterTextEN(charTextENData?.data && typeof charTextENData.data === 'object' ? charTextENData.data : {});
       setTrimmedImageData(trimmedImageDataRes && typeof trimmedImageDataRes === 'object' ? trimmedImageDataRes : {});
     } catch (error) {
       console.error('Error loading face data:', error);
