@@ -73,6 +73,16 @@ export default function AudioPlayer({ src, onError, compact = false }: AudioPlay
     };
   }, []);
 
+  const tryPlay = async (audio: HTMLAudioElement) => {
+    try {
+      await audio.play();
+      setIsPlaying(true);
+    } catch {
+      setIsPlaying(false);
+      onError?.();
+    }
+  };
+
   const togglePlay = () => {
     if (!audioRef.current) return;
 
@@ -87,8 +97,7 @@ export default function AudioPlayer({ src, onError, compact = false }: AudioPlay
             currentPlayingAudio.pause();
           }
           currentPlayingAudio = audioRef.current;
-          audioRef.current.play();
-          setIsPlaying(true);
+          void tryPlay(audioRef.current);
         }
       }, 100);
       return;
@@ -97,14 +106,16 @@ export default function AudioPlayer({ src, onError, compact = false }: AudioPlay
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
+      if (currentPlayingAudio === audioRef.current) {
+        currentPlayingAudio = null;
+      }
     } else {
       // Stop any other playing audio
       if (currentPlayingAudio && currentPlayingAudio !== audioRef.current) {
         currentPlayingAudio.pause();
       }
       currentPlayingAudio = audioRef.current;
-      audioRef.current.play();
-      setIsPlaying(true);
+      void tryPlay(audioRef.current);
     }
   };
 

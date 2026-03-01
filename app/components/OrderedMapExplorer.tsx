@@ -25,6 +25,7 @@ interface OrderedMapData {
   category: string;
   file: string;
   data: unknown;
+  sourceUrl?: string;
 }
 
 type ViewLocation = 
@@ -32,11 +33,41 @@ type ViewLocation =
   | { type: 'folder'; category: string }
   | { type: 'file'; category: string; file: string };
 
+function normalizeFileName(file: string): string {
+  return file.replace(/\.json$/i, '');
+}
+
+function normalizeFilesByCategory(input: unknown): FilesByCategory {
+  if (!input || typeof input !== 'object') return {};
+
+  const normalized: FilesByCategory = {};
+  const entries = Object.entries(input as Record<string, unknown>);
+
+  for (const [category, value] of entries) {
+    if (Array.isArray(value)) {
+      normalized[category] = value
+        .filter((file): file is string => typeof file === 'string')
+        .map(normalizeFileName);
+      continue;
+    }
+
+    if (typeof value === 'string') {
+      normalized[category] = [normalizeFileName(value)];
+      continue;
+    }
+
+    normalized[category] = [];
+  }
+
+  return normalized;
+}
+
 export default function OrderedMapExplorer() {
   const [categories, setCategories] = useState<string[]>([]);
   const [filesByCategory, setFilesByCategory] = useState<FilesByCategory>({});
   const [currentLocation, setCurrentLocation] = useState<ViewLocation>({ type: 'root' });
   const [fileData, setFileData] = useState<OrderedMapData | null>(null);
+  const [listSourceUrl, setListSourceUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -51,25 +82,37 @@ export default function OrderedMapExplorer() {
     return Array.isArray(parsed) ? parsed : [];
   }, [fileData, currentLocation]);
 
-  useEffect(() => {
-    fetchFileList();
-  }, [language]);
-
-  const fetchFileList = async () => {
+  const fetchFileList = useCallback(async () => {
+    setLoading(true);
     try {
       const lang = language === 'both' ? 'jp' : language;
       const response = await fetch(`/api/orderedmap/list?lang=${lang}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch orderedmap list (${response.status})`);
+      }
+
       const data = await response.json();
-      setCategories(Array.isArray(data.categories) ? data.categories : []);
-      setFilesByCategory(data.filesByCategory && typeof data.filesByCategory === 'object' ? data.filesByCategory : {});
+      const normalizedFiles = normalizeFilesByCategory(data.filesByCategory);
+      const normalizedCategories = Array.isArray(data.categories)
+        ? data.categories.filter((category: unknown): category is string => typeof category === 'string')
+        : Object.keys(normalizedFiles);
+
+      setCategories(normalizedCategories);
+      setFilesByCategory(normalizedFiles);
+      setListSourceUrl(typeof data.sourceUrl === 'string' ? data.sourceUrl : null);
     } catch (error) {
       console.error('Error fetching file list:', error);
       setCategories([]);
       setFilesByCategory({});
+      setListSourceUrl(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [language]);
+
+  useEffect(() => {
+    fetchFileList();
+  }, [fetchFileList]);
 
   const fetchFileData = async (category: string, file: string) => {
     setDataLoading(true);
@@ -78,10 +121,24 @@ export default function OrderedMapExplorer() {
       const response = await fetch(
         `/api/orderedmap/data?category=${encodeURIComponent(category)}&file=${encodeURIComponent(file)}&lang=${lang}`
       );
+      if (!response.ok) {
+        throw new Error(`Failed to fetch orderedmap file (${response.status})`);
+      }
+
       const data = await response.json();
-      setFileData(data);
+      if (!data || typeof data !== 'object' || !('data' in data)) {
+        throw new Error('Invalid orderedmap file payload');
+      }
+
+      setFileData({
+        category,
+        file: normalizeFileName(typeof data.file === 'string' ? data.file : file),
+        data: data.data,
+        sourceUrl: typeof data.sourceUrl === 'string' ? data.sourceUrl : undefined,
+      });
     } catch (error) {
       console.error('Error fetching file data:', error);
+      setFileData(null);
     } finally {
       setDataLoading(false);
     }
@@ -200,6 +257,10 @@ export default function OrderedMapExplorer() {
     );
   }, [currentLocation, filesByCategory, searchTerm]);
 
+  const activeSourceUrl = currentLocation.type === 'file'
+    ? fileData?.sourceUrl ?? null
+    : listSourceUrl;
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -283,13 +344,13 @@ export default function OrderedMapExplorer() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setLanguage('jp')}>
-                <span className={language === 'jp' ? 'font-bold' : ''}>🇯🇵 Japanese</span>
+                <span className={language === 'jp' ? 'font-bold' : ''}>JP (datalist)</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setLanguage('en')}>
-                <span className={language === 'en' ? 'font-bold' : ''}>🇬🇧 English</span>
+                <span className={language === 'en' ? 'font-bold' : ''}>EN (datalist_en)</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setLanguage('both')}>
-                <span className={language === 'both' ? 'font-bold' : ''}>🌐 Both (Bilingual)</span>
+                <span className={language === 'both' ? 'font-bold' : ''}>Both (Bilingual)</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -334,6 +395,22 @@ export default function OrderedMapExplorer() {
           )}
         </div>
       </div>
+
+      {activeSourceUrl && (
+        <div className="border-b border-border bg-card px-4 py-2">
+          <div className="text-xs text-muted-foreground">
+            Source:{' '}
+            <a
+              href={activeSourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary hover:underline break-all"
+            >
+              {activeSourceUrl}
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Search Bar - Only show when browsing folders/files */}
       {currentLocation.type !== 'file' && (
@@ -782,3 +859,4 @@ export default function OrderedMapExplorer() {
     </div>
   );
 }
+

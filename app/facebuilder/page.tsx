@@ -43,7 +43,18 @@ interface CharacterTextData {
   [id: string]: string[];
 }
 
-const EXCLUSIVE_EXPRESSIONS = ['anger.png', 'consent.png', 'consent_b.png', 'joy.png', 'normal.png', 'pride.png', 'surprise.png', 'think.png'];
+interface TrimmedImageData {
+  [assetKey: string]: string[] | number[];
+}
+
+interface TrimRect {
+  x: number;
+  y: number;
+  canvasWidth: number;
+  canvasHeight: number;
+}
+
+const OTHER_PART_EXPRESSIONS = ['shame.png', 'sweat.png', 'unknown.png'];
 
 export default function FaceBuilder() {
   const [faces, setFaces] = useState<string[]>([]);
@@ -61,27 +72,86 @@ export default function FaceBuilder() {
   const [selectedFile, setSelectedFile] = useState<{ type: 'ui' | 'story' | 'fullshot'; file: string; variant?: string } | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const [expressionScale, setExpressionScale] = useState(0.24);
-  const [expressionOffsetX, setExpressionOffsetX] = useState(199);
-  const [expressionOffsetY, setExpressionOffsetY] = useState(233);
+  const [expressionScale, setExpressionScale] = useState(1);
+  const [expressionOffsetX, setExpressionOffsetX] = useState(0);
+  const [expressionOffsetY, setExpressionOffsetY] = useState(0);
   const [copied, setCopied] = useState(false);
   const [language, setLanguage] = useState<'jp' | 'en' | 'both'>('both');
+  const [trimmedImageData, setTrimmedImageData] = useState<TrimmedImageData>({});
+  const [composeError, setComposeError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const composeRenderIdRef = useRef(0);
   const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     loadData();
   }, []);
 
+  const normalizeAssetStem = useCallback((file: string) => {
+    return file.replace(/\.(atf|png)$/i, '').toLowerCase();
+  }, []);
+
+  const toPngFileName = useCallback((file: string) => {
+    return `${normalizeAssetStem(file)}.png`;
+  }, [normalizeAssetStem]);
+
+  const getStoryImageUrlForFace = useCallback((faceName: string, file: string) => {
+    return `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${faceName}/ui/story/${toPngFileName(file)}`;
+  }, [toPngFileName]);
+
+  const getStoryTrimKey = useCallback((faceName: string, file: string) => {
+    return `character/${faceName}/ui/story/${normalizeAssetStem(file)}`;
+  }, [normalizeAssetStem]);
+
+  const getTrimRect = useCallback((faceName: string, file: string): TrimRect | null => {
+    const key = getStoryTrimKey(faceName, file);
+    const raw = trimmedImageData[key];
+    if (!Array.isArray(raw) || raw.length < 4) return null;
+
+    const x = Number(raw[0]);
+    const y = Number(raw[1]);
+    const canvasWidth = Number(raw[2]);
+    const canvasHeight = Number(raw[3]);
+
+    if ([x, y, canvasWidth, canvasHeight].some((value) => Number.isNaN(value))) {
+      return null;
+    }
+
+    return { x, y, canvasWidth, canvasHeight };
+  }, [getStoryTrimKey, trimmedImageData]);
+
   const loadData = async () => {
     try {
-      const [facesRes, faceUIRes, characterRes, fullShotRes, charTextJPRes, charTextENRes] = await Promise.all([
+      const fetchTrimmedImageData = async (): Promise<TrimmedImageData> => {
+        const primary = await fetch('/data/datalist/generated/trimmed_image.json');
+        if (primary.ok) {
+          const data = await primary.json();
+          if (data && typeof data === 'object') {
+            return data as TrimmedImageData;
+          }
+        }
+
+        const fallback = await fetch('/data/datalist_en/generated/trimmed_image.json');
+        if (fallback.ok) {
+          const data = await fallback.json();
+          if (data && typeof data === 'object') {
+            return data as TrimmedImageData;
+          }
+        }
+
+        return {};
+      };
+
+      const [facesRes, faceUIRes, characterRes, fullShotRes, charTextJPRes, charTextENRes, trimmedImageDataRes] = await Promise.all([
         fetch('/data/faces.json'),
         fetch('/data/face-ui.json'),
         fetch('/data/character.json'),
         fetch('/data/full_shot_image_attribute.json'),
         fetch('/api/character-text?lang=jp'),
-        fetch('/api/character-text?lang=en')
+        fetch('/api/character-text?lang=en'),
+        fetchTrimmedImageData()
       ]);
       
       const facesData = await facesRes.json();
@@ -97,6 +167,7 @@ export default function FaceBuilder() {
       setFullShotAttributes(fullShotData && typeof fullShotData === 'object' ? fullShotData : {});
       setCharacterTextJP(charTextJP?.data && typeof charTextJP.data === 'object' ? charTextJP.data : {});
       setCharacterTextEN(charTextEN?.data && typeof charTextEN.data === 'object' ? charTextEN.data : {});
+      setTrimmedImageData(trimmedImageDataRes && typeof trimmedImageDataRes === 'object' ? trimmedImageDataRes : {});
     } catch (error) {
       console.error('Error loading face data:', error);
       // Set defaults on error
@@ -106,6 +177,7 @@ export default function FaceBuilder() {
       setFullShotAttributes({});
       setCharacterTextJP({});
       setCharacterTextEN({});
+      setTrimmedImageData({});
     } finally {
       setLoading(false);
     }
@@ -120,11 +192,64 @@ export default function FaceBuilder() {
   }, [faces, searchTerm]);
 
   const currentFaceData = selectedFace ? faceUIData[selectedFace] : null;
+  const selectedExpressionList = useMemo(() => Array.from(selectedExpressions), [selectedExpressions]);
+
+  const availableBaseFiles = useMemo(() => {
+    if (!currentFaceData?.story?.files || !Array.isArray(currentFaceData.story.files)) return [];
+    return currentFaceData.story.files.filter((file) => normalizeAssetStem(file).startsWith('base'));
+  }, [currentFaceData, normalizeAssetStem]);
+
+  const resolvedBaseFile = useMemo(() => {
+    if (availableBaseFiles.length === 0) return null;
+
+    const normalizedMap = new Map<string, string>();
+    availableBaseFiles.forEach((file) => {
+      normalizedMap.set(normalizeAssetStem(file), file);
+    });
+
+    const preferred = selectedBase === '1'
+      ? ['base_1', 'base_b', 'base_1_right', 'base_b_right', 'base']
+      : ['base_0', 'base', 'base_0_right'];
+
+    for (const baseStem of preferred) {
+      const matched = normalizedMap.get(baseStem);
+      if (matched) return matched;
+    }
+
+    const firstWithoutRight = availableBaseFiles.find((file) => !normalizeAssetStem(file).includes('_right'));
+    return firstWithoutRight ?? availableBaseFiles[0];
+  }, [availableBaseFiles, normalizeAssetStem, selectedBase]);
+
+  const composeCanvasSize = useMemo(() => {
+    if (selectedFace && resolvedBaseFile) {
+      const baseRect = getTrimRect(selectedFace, resolvedBaseFile);
+      if (baseRect) {
+        return { width: baseRect.canvasWidth, height: baseRect.canvasHeight };
+      }
+    }
+
+    if (selectedFace && selectedExpressionList.length > 0) {
+      for (const expression of selectedExpressionList) {
+        const expressionRect = getTrimRect(selectedFace, expression);
+        if (expressionRect) {
+          return { width: expressionRect.canvasWidth, height: expressionRect.canvasHeight };
+        }
+      }
+    }
+
+    return { width: 512, height: 512 };
+  }, [getTrimRect, resolvedBaseFile, selectedExpressionList, selectedFace]);
+
+  const orderedBaseCandidates = useMemo(() => {
+    if (!resolvedBaseFile) return availableBaseFiles;
+    return [resolvedBaseFile, ...availableBaseFiles.filter((file) => file !== resolvedBaseFile)];
+  }, [availableBaseFiles, resolvedBaseFile]);
 
   const handleFaceSelect = (face: string) => {
     setSelectedFace(face);
     setSelectedFile(null);
     setImageError(false);
+    setComposeError(null);
     setSelectedExpressions(new Set());
     setSelectedBase('0');
     setViewMode('compose');
@@ -133,21 +258,25 @@ export default function FaceBuilder() {
   const toggleExpression = (expression: string) => {
     setSelectedExpressions(prev => {
       const newSet = new Set(prev);
-      const isExclusive = EXCLUSIVE_EXPRESSIONS.includes(expression);
+      const isOtherPart = OTHER_PART_EXPRESSIONS.includes(expression);
       
-      if (isExclusive) {
-        // For exclusive expressions, remove all other exclusive ones first
-        EXCLUSIVE_EXPRESSIONS.forEach(exp => newSet.delete(exp));
+      if (!isOtherPart) {
+        // Main expressions are exclusive: keep one main face expression active.
+        availableExpressions.forEach((exp) => {
+          if (!OTHER_PART_EXPRESSIONS.includes(exp)) {
+            newSet.delete(exp);
+          }
+        });
         // Toggle the clicked one
         if (prev.has(expression)) {
           // If it was already selected, just remove it (deselect)
           return newSet;
         } else {
-          // Add the new exclusive expression
+          // Add the selected main expression
           newSet.add(expression);
         }
       } else {
-        // For toggleable expressions, just toggle normally
+        // Other parts are additive/toggleable.
         if (newSet.has(expression)) {
           newSet.delete(expression);
         } else {
@@ -171,56 +300,181 @@ export default function FaceBuilder() {
   };
 
   const resetAdjustments = () => {
-    setExpressionScale(0.24);
-    setExpressionOffsetX(199);
-    setExpressionOffsetY(233);
+    setExpressionScale(1);
+    setExpressionOffsetX(0);
+    setExpressionOffsetY(0);
   };
 
+  const loadImage = useCallback((url: string): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const cached = imageCacheRef.current.get(url);
+
+      if (cached && cached.complete && cached.naturalWidth > 0) {
+        resolve(cached);
+        return;
+      }
+
+      const img = cached ?? new window.Image();
+
+      const cleanup = () => {
+        img.removeEventListener('load', onLoad);
+        img.removeEventListener('error', onError);
+      };
+
+      const onLoad = () => {
+        cleanup();
+        resolve(img);
+      };
+
+      const onError = () => {
+        cleanup();
+        imageCacheRef.current.delete(url);
+        reject(new Error(`Failed to load image: ${url}`));
+      };
+
+      img.addEventListener('load', onLoad);
+      img.addEventListener('error', onError);
+
+      if (!cached) {
+        imageCacheRef.current.set(url, img);
+        img.src = url;
+      } else if (img.complete && img.naturalWidth > 0) {
+        cleanup();
+        resolve(img);
+      }
+    });
+  }, []);
+
+  const getStoryImageUrlCandidates = useCallback((faceName: string, file: string) => {
+    const normalizedPng = toPngFileName(file);
+    const original = file.toLowerCase().endsWith('.png') ? file : normalizedPng;
+    const encodedFace = encodeURIComponent(faceName);
+    const encodedPng = encodeURIComponent(normalizedPng);
+    const encodedOriginal = encodeURIComponent(original);
+
+    const urls = [
+      `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${faceName}/ui/story/${normalizedPng}`,
+      `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${encodedFace}/ui/story/${encodedPng}`
+    ];
+
+    if (encodedOriginal !== encodedPng) {
+      urls.push(`https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${encodedFace}/ui/story/${encodedOriginal}`);
+    }
+
+    return Array.from(new Set(urls));
+  }, [toPngFileName]);
+
+  const loadImageWithFallback = useCallback(async (urls: string[]) => {
+    for (const url of urls) {
+      try {
+        const image = await loadImage(url);
+        return { image, url };
+      } catch {
+        continue;
+      }
+    }
+    return { image: null, url: null };
+  }, [loadImage]);
+
+  const drawStoryLayer = useCallback(async (
+    ctx: CanvasRenderingContext2D,
+    faceName: string,
+    file: string,
+    options?: { offsetX?: number; offsetY?: number; scale?: number }
+  ) => {
+    const { image } = await loadImageWithFallback(getStoryImageUrlCandidates(faceName, file));
+    if (!image) return false;
+    const trimRect = getTrimRect(faceName, file);
+    const offsetX = options?.offsetX ?? 0;
+    const offsetY = options?.offsetY ?? 0;
+    const scale = options?.scale ?? 1;
+
+    if (trimRect) {
+      const drawWidth = image.naturalWidth * scale;
+      const drawHeight = image.naturalHeight * scale;
+      ctx.drawImage(
+        image,
+        trimRect.x + offsetX,
+        trimRect.y + offsetY,
+        drawWidth,
+        drawHeight
+      );
+      return true;
+    }
+
+    // Fallback for rare entries that do not have trim metadata.
+    ctx.save();
+    ctx.translate(offsetX, offsetY);
+    ctx.scale(scale, scale);
+    ctx.drawImage(image, 0, 0, 512, 512);
+    ctx.restore();
+    return true;
+  }, [getStoryImageUrlCandidates, getTrimRect, loadImageWithFallback]);
+
+  const renderCompositeToCanvas = useCallback(async (canvas: HTMLCanvasElement): Promise<boolean> => {
+    if (!selectedFace || orderedBaseCandidates.length === 0) return false;
+
+    canvas.width = composeCanvasSize.width;
+    canvas.height = composeCanvasSize.height;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    let baseRendered = false;
+    for (const baseFile of orderedBaseCandidates) {
+      if (await drawStoryLayer(ctx, selectedFace, baseFile)) {
+        baseRendered = true;
+        break;
+      }
+    }
+
+    if (!baseRendered) {
+      return false;
+    }
+
+    for (const expression of selectedExpressionList) {
+      await drawStoryLayer(ctx, selectedFace, expression, {
+        offsetX: expressionOffsetX,
+        offsetY: expressionOffsetY,
+        scale: expressionScale
+      });
+    }
+
+    return true;
+  }, [
+    composeCanvasSize.height,
+    composeCanvasSize.width,
+    drawStoryLayer,
+    expressionOffsetX,
+    expressionOffsetY,
+    expressionScale,
+    orderedBaseCandidates,
+    selectedExpressionList,
+    selectedFace
+  ]);
+
   const downloadComposite = async () => {
-    if (!selectedFace || !canvasRef.current) return;
+    if (!selectedFace || !resolvedBaseFile || !canvasRef.current) return;
     setIsDownloading(true);
 
     try {
-      const ctx = canvasRef.current.getContext('2d');
-      if (!ctx) throw new Error('Could not get canvas context');
-
-      // Clear canvas
-      ctx.clearRect(0, 0, 512, 512);
-
-      // Helper to load image
-      const loadImage = (url: string): Promise<HTMLImageElement> => {
-        return new Promise((resolve, reject) => {
-          const img = new window.Image();
-          img.crossOrigin = 'anonymous';
-          img.src = url;
-          img.onload = () => resolve(img);
-          img.onerror = reject;
-        });
-      };
-
-      // Draw Base
-      const baseUrl = getImageUrl('story', `base_${selectedBase}.png`);
-      const baseImg = await loadImage(baseUrl);
-      ctx.drawImage(baseImg, 0, 0, 512, 512);
-
-      // Draw Expressions
-      for (const expression of Array.from(selectedExpressions)) {
-        const expUrl = getImageUrl('story', expression);
-        const expImg = await loadImage(expUrl);
-        
-        ctx.save();
-        ctx.translate(expressionOffsetX, expressionOffsetY);
-        ctx.scale(expressionScale, expressionScale);
-        ctx.drawImage(expImg, 0, 0, 512, 512);
-        ctx.restore();
+      const rendered = await renderCompositeToCanvas(canvasRef.current);
+      if (!rendered) {
+        throw new Error('Could not render composite canvas');
       }
 
       // Trigger download
-      const dataUrl = canvasRef.current.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.download = `${selectedFace}_composite.png`;
-      link.href = dataUrl;
-      link.click();
+      try {
+        const dataUrl = canvasRef.current.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = `${selectedFace}_composite.png`;
+        link.href = dataUrl;
+        link.click();
+      } catch (error) {
+        console.error('Download blocked by cross-origin image policy:', error);
+        setComposeError('Preview rendered, but download is blocked for this asset by browser cross-origin policy.');
+      }
 
     } catch (error) {
       console.error('Failed to generate composite:', error);
@@ -228,6 +482,42 @@ export default function FaceBuilder() {
       setIsDownloading(false);
     }
   };
+
+  useEffect(() => {
+    if (viewMode !== 'compose') return;
+    const previewCanvas = previewCanvasRef.current;
+    if (!previewCanvas) return;
+
+    if (!selectedFace || !resolvedBaseFile) {
+      setComposeError('No base image was found for this face.');
+      return;
+    }
+
+    const renderId = ++composeRenderIdRef.current;
+    let disposed = false;
+    setComposeError(null);
+
+    (async () => {
+      const rendered = await renderCompositeToCanvas(previewCanvas);
+      if (disposed || renderId !== composeRenderIdRef.current) return;
+      if (!rendered) {
+        setComposeError('Failed to render composite preview.');
+      }
+    })();
+
+    return () => {
+      disposed = true;
+    };
+  }, [
+    expressionOffsetX,
+    expressionOffsetY,
+    expressionScale,
+    renderCompositeToCanvas,
+    resolvedBaseFile,
+    selectedExpressionList,
+    selectedFace,
+    viewMode
+  ]);
 
   const handleFileSelect = (type: 'ui' | 'story' | 'fullshot', file: string, variant?: string) => {
     setSelectedFile({ type, file, variant });
@@ -277,18 +567,14 @@ export default function FaceBuilder() {
       return getFullShotImageUrl(selectedFace, variant);
     }
     
-    // Remove file extensions like .atf and .png for cleaner URLs
-    const cleanFile = file.replace(/\.(atf|png)$/, '.png');
-    
     // Construct URL based on type
     if (type === 'story') {
-      // Story/expression files are in character_art/{faceName}/ui/story/
-      return `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${selectedFace}/ui/story/${cleanFile}`;
+      return getStoryImageUrlForFace(selectedFace, file);
     } else {
       // UI files are in character_art/{faceName}/ui/
-      return `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${selectedFace}/ui/${cleanFile}`;
+      return `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${selectedFace}/ui/${toPngFileName(file)}`;
     }
-  }, [selectedFace]);
+  }, [getStoryImageUrlForFace, selectedFace, toPngFileName]);
 
   const downloadImage = () => {
     if (!selectedFile || !selectedFace) return;
@@ -306,9 +592,9 @@ export default function FaceBuilder() {
     if (!selectedFace || !currentFaceData?.story?.files) return [];
     if (!Array.isArray(currentFaceData.story.files)) return [];
     return currentFaceData.story.files.filter(file => 
-      !file.startsWith('base_') // Exclude base files from expressions
+      !normalizeAssetStem(file).startsWith('base') // Exclude all base files from expressions
     );
-  }, [selectedFace, currentFaceData]);
+  }, [currentFaceData, normalizeAssetStem, selectedFace]);
 
   const availableFullShotVariants = useMemo(() => {
     if (!selectedFace) return [];
@@ -319,20 +605,20 @@ export default function FaceBuilder() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFace, fullShotAttributes]);
 
-  const { exclusiveExps, otherExps } = useMemo(() => {
-    const exclusiveSet = new Set(EXCLUSIVE_EXPRESSIONS);
-    const exc: string[] = [];
+  const { mainExps, otherExps } = useMemo(() => {
+    const otherPartsSet = new Set(OTHER_PART_EXPRESSIONS);
+    const main: string[] = [];
     const oth: string[] = [];
     
     availableExpressions.forEach(exp => {
-      if (exclusiveSet.has(exp)) {
-        exc.push(exp);
-      } else {
+      if (otherPartsSet.has(exp)) {
         oth.push(exp);
+      } else {
+        main.push(exp);
       }
     });
     
-    return { exclusiveExps: exc, otherExps: oth };
+    return { mainExps: main, otherExps: oth };
   }, [availableExpressions]);
 
   if (loading) {
@@ -502,6 +788,11 @@ export default function FaceBuilder() {
                       >
                         Base 1 (Alternate)
                       </Button>
+                      {resolvedBaseFile && (
+                        <p className="text-[11px] text-muted-foreground pt-1">
+                          Using: <span className="font-mono">{resolvedBaseFile}</span>
+                        </p>
+                      )}
                     </CardContent>
                   </Card>
 
@@ -511,14 +802,6 @@ export default function FaceBuilder() {
                       <CardHeader className="pb-3">
                         <div className="flex items-center justify-between">
                           <CardTitle className="text-sm">Expression Adjustment</CardTitle>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={copyEncoding}
-                          >
-                            <Copy className="h-3 w-3 mr-1" />
-                            {copied ? 'Copied!' : 'Copy'}
-                          </Button>
                           <div className="flex gap-1">
                             <Button
                               variant="outline"
@@ -625,11 +908,11 @@ export default function FaceBuilder() {
                       <CardContent className="flex-1 overflow-hidden p-0">
                         <ScrollArea className="h-full">
                           <div className="p-4 pt-0 space-y-4">
-                            {exclusiveExps.length > 0 && (
+                            {mainExps.length > 0 && (
                               <div>
                                 <h4 className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Main Expressions</h4>
                                 <div className="space-y-1">
-                                  {exclusiveExps.map(expression => (
+                                  {mainExps.map(expression => (
                                     <Button
                                       key={expression}
                                       variant={selectedExpressions.has(expression) ? 'default' : 'ghost'}
@@ -676,14 +959,14 @@ export default function FaceBuilder() {
                       <div>
                         <CardTitle>Face Preview</CardTitle>
                         <CardDescription className="mt-1">
-                          Base {selectedBase} {selectedExpressions.size > 0 && `+ ${selectedExpressions.size} expression${selectedExpressions.size > 1 ? 's' : ''}`}
+                          {resolvedBaseFile ?? `Base ${selectedBase}`} {selectedExpressions.size > 0 && `+ ${selectedExpressions.size} expression${selectedExpressions.size > 1 ? 's' : ''}`}
                         </CardDescription>
                       </div>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={downloadComposite}
-                        disabled={isDownloading}
+                        disabled={isDownloading || !resolvedBaseFile}
                       >
                         {isDownloading ? (
                           <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -695,35 +978,21 @@ export default function FaceBuilder() {
                     </div>
                   </CardHeader>
                   <CardContent className="flex-1 flex items-center justify-center p-6">
-                    <div className="relative inline-block">
-                      {/* Base Image */}
-                      <Image
-                        src={getImageUrl('story', `base_${selectedBase}.png`)}
-                        alt={`Base ${selectedBase}`}
-                        width={512}
-                        height={512}
-                        style={{ imageRendering: 'pixelated', display: 'block' }}
-                        unoptimized
-                      />
-                      {/* Expression Layers */}
-                      {Array.from(selectedExpressions).map((expression) => (
-                        <Image
-                          key={expression}
-                          src={getImageUrl('story', expression)}
-                          alt={expression}
-                          width={512}
-                          height={512}
-                          className="absolute"
-                          style={{ 
-                            imageRendering: 'pixelated',
-                            left: `${expressionOffsetX}px`,
-                            top: `${expressionOffsetY}px`,
-                            transform: `scale(${expressionScale})`,
-                            transformOrigin: 'top left'
-                          }}
-                          unoptimized
+                    <div className="relative w-full h-full flex items-center justify-center">
+                      {composeError ? (
+                        <div className="text-center text-muted-foreground">
+                          <ImageIcon className="h-16 w-16 mx-auto mb-4 opacity-20" />
+                          <p className="text-sm">{composeError}</p>
+                        </div>
+                      ) : (
+                        <canvas
+                          ref={previewCanvasRef}
+                          width={composeCanvasSize.width}
+                          height={composeCanvasSize.height}
+                          className="max-w-full max-h-full rounded-md border border-border bg-muted/20 shadow-sm"
+                          style={{ imageRendering: 'pixelated' }}
                         />
-                      ))}
+                      )}
                     </div>
                   </CardContent>
                 </Card>

@@ -16,6 +16,7 @@ import {
   Search,
   Sparkles,
   Swords,
+  Ticket,
   User,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -57,6 +58,14 @@ const TOOL_CARDS: ToolCard[] = [
     icon: CalendarDays,
     keywords: ['calendar', 'events', 'schedule', 'campaign'],
     tone: 'from-cyan-500/15 to-cyan-500/5 border-cyan-500/30',
+  },
+  {
+    href: '/gacha',
+    title: 'Gacha Explorer',
+    description: 'Browse banner art, filter portals, and inspect odds pools in one place.',
+    icon: Ticket,
+    keywords: ['gacha', 'banner', 'portal', 'odds'],
+    tone: 'from-fuchsia-500/15 to-fuchsia-500/5 border-fuchsia-500/30',
   },
   {
     href: '/orderedmap',
@@ -223,6 +232,9 @@ export default function HomeCommandCenter() {
                 <Link href='/calendar'>
                   <Button size='sm'>Open Calendar</Button>
                 </Link>
+                <Link href='/gacha'>
+                  <Button size='sm' variant='outline'>Open Gacha</Button>
+                </Link>
                 <Link href='/quests'>
                   <Button size='sm' variant='outline'>Open Quests</Button>
                 </Link>
@@ -347,6 +359,13 @@ export default function HomeCommandCenter() {
                 <p className='mt-1 text-muted-foreground'>Use calendar filters, then open details modal for raw payload + assets.</p>
                 <Link href='/calendar' className='mt-2 inline-flex items-center gap-1 text-primary hover:underline'>
                   Go to Calendar <ArrowRight className='h-3.5 w-3.5' />
+                </Link>
+              </div>
+              <div className='rounded-md border p-3'>
+                <p className='font-medium'>Banner Odds Audit</p>
+                <p className='mt-1 text-muted-foreground'>Scan gacha banners with artwork-first cards and inspect parsed + raw odds pools.</p>
+                <Link href='/gacha' className='mt-2 inline-flex items-center gap-1 text-primary hover:underline'>
+                  Go to Gacha <ArrowRight className='h-3.5 w-3.5' />
                 </Link>
               </div>
               <div className='rounded-md border p-3'>

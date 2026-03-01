@@ -1,24 +1,64 @@
 import { NextResponse } from 'next/server';
 
 const IS_PRODUCTION = process.env.VERCEL === '1';
+const ORDEREDMAP_CDN_BASE = 'https://wfjukebox.b-cdn.net/orderedmaps';
 const GITHUB_RAW_URL = 'https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data';
+
+function normalizeFilesByCategory(input: unknown): Record<string, string[]> {
+  if (!input || typeof input !== 'object') {
+    return {};
+  }
+
+  const output: Record<string, string[]> = {};
+  const entries = Object.entries(input as Record<string, unknown>);
+
+  for (const [category, value] of entries) {
+    if (Array.isArray(value)) {
+      output[category] = value
+        .filter((file): file is string => typeof file === 'string')
+        .map((file) => file.replace(/\.json$/i, ''));
+      continue;
+    }
+
+    if (typeof value === 'string') {
+      output[category] = [value.replace(/\.json$/i, '')];
+      continue;
+    }
+
+    output[category] = [];
+  }
+
+  return output;
+}
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const lang = searchParams.get('lang') || 'jp';
     
-    // In production, fetch from GitHub
+    // In production, prefer Bunny CDN orderedmaps manifest, then fallback to GitHub.
     if (IS_PRODUCTION) {
-      const manifestUrl = `${GITHUB_RAW_URL}/manifest_${lang}.json`;
-      const response = await fetch(manifestUrl, { next: { revalidate: 3600 } });
-      
-      if (response.ok) {
+      const candidateManifestUrls = [
+        `${ORDEREDMAP_CDN_BASE}/manifest_${lang}.json`,
+        `${GITHUB_RAW_URL}/manifest_${lang}.json`,
+      ];
+
+      for (const manifestUrl of candidateManifestUrls) {
+        const response = await fetch(manifestUrl, { next: { revalidate: 3600 } });
+        if (!response.ok) continue;
+
         const data = await response.json();
-        return NextResponse.json({ ...data, lang });
-      } else {
-        return NextResponse.json({ error: 'Manifest not found on GitHub' }, { status: 404 });
+        const filesByCategory = normalizeFilesByCategory(
+          data?.filesByCategory && typeof data.filesByCategory === 'object' ? data.filesByCategory : {}
+        );
+        const categories = Array.isArray(data?.categories)
+          ? data.categories.filter((category: unknown): category is string => typeof category === 'string')
+          : Object.keys(filesByCategory);
+
+        return NextResponse.json({ categories, filesByCategory, lang, sourceUrl: manifestUrl });
       }
+
+      return NextResponse.json({ error: 'Manifest not found on CDN/GitHub' }, { status: 404 });
     }
     
     // Development: use local filesystem
