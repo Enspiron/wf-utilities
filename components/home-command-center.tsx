@@ -9,12 +9,14 @@ import {
   CalendarDays,
   Compass,
   Database,
+  ExternalLink,
   FileJson,
+  Globe2,
+  Hourglass,
   Music2,
   Package,
   RefreshCw,
   Search,
-  Sparkles,
   Swords,
   Ticket,
   User,
@@ -40,6 +42,13 @@ type SnapshotState = {
   questFiles: number | null;
   itemEntries: number | null;
   musicTracks: number | null;
+};
+
+type EosMilestone = {
+  key: string;
+  label: string;
+  dateIso: string;
+  tone: string;
 };
 
 const TOOL_CARDS: ToolCard[] = [
@@ -107,7 +116,69 @@ const TOOL_CARDS: ToolCard[] = [
     keywords: ['face', 'builder', 'portrait'],
     tone: 'from-orange-500/15 to-orange-500/5 border-orange-500/30',
   },
+  {
+    href: '/save-editor',
+    title: 'Save Editor',
+    description: 'Load fresh/mostly-complete templates or upload your own save JSON and edit.',
+    icon: FileJson,
+    keywords: ['save', 'editor', 'json', 'upload', 'template'],
+    tone: 'from-sky-500/15 to-sky-500/5 border-sky-500/30',
+  },
 ];
+
+const EOS_MILESTONES: EosMilestone[] = [
+  {
+    key: 'jp',
+    label: 'JP Server EoS',
+    dateIso: '2024-02-20',
+    tone: 'border-rose-500/35 bg-rose-500/8',
+  },
+  {
+    key: 'gl',
+    label: 'GL Server EoS',
+    dateIso: '2024-07-25',
+    tone: 'border-amber-500/35 bg-amber-500/8',
+  },
+  {
+    key: 'tw',
+    label: 'TW Server EoS',
+    dateIso: '2024-05-24',
+    tone: 'border-cyan-500/35 bg-cyan-500/8',
+  },
+  {
+    key: 'cn',
+    label: 'CN Server EoS',
+    dateIso: '2025-08-14',
+    tone: 'border-indigo-500/35 bg-indigo-500/8',
+  }
+];
+
+const EOS_TWEET_URL = 'https://twitter.com/world_flipper/status/1765663775401836851';
+const EOS_TWEET_ID = '1765663775401836851';
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function toUtcDayTimestamp(value: Date): number {
+  return Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
+}
+
+function parseIsoDateToUtcDate(dateIso: string): Date {
+  return new Date(`${dateIso}T00:00:00Z`);
+}
+
+function daysSinceDate(target: Date, now: Date): number {
+  return Math.max(0, Math.floor((toUtcDayTimestamp(now) - toUtcDayTimestamp(target)) / MS_PER_DAY));
+}
+
+function dateFromTweetSnowflake(id: string): Date | null {
+  try {
+    const snowflake = BigInt(id);
+    const timestampMs = Number((snowflake >> 22n) + 1288834974657n);
+    if (!Number.isFinite(timestampMs) || timestampMs <= 0) return null;
+    return new Date(timestampMs);
+  } catch {
+    return null;
+  }
+}
 
 function formatMetric(value: number | null): string {
   if (value === null) return '--';
@@ -128,6 +199,7 @@ export default function HomeCommandCenter() {
   const [refreshingSnapshot, setRefreshingSnapshot] = useState(false);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   const filteredTools = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -197,6 +269,15 @@ export default function HomeCommandCenter() {
     void loadSnapshot(false);
   }, [loadSnapshot]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowTick(Date.now());
+    }, 60_000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
+
   const metrics = useMemo(
     () => [
       { label: 'OrderedMap Categories', value: snapshot.orderedmapCategories },
@@ -207,6 +288,29 @@ export default function HomeCommandCenter() {
     ],
     [snapshot]
   );
+
+  const eosSnapshot = useMemo(() => {
+    const now = new Date(nowTick);
+    return EOS_MILESTONES.map((milestone) => {
+      const date = parseIsoDateToUtcDate(milestone.dateIso);
+      return {
+        ...milestone,
+        date,
+        daysSince: daysSinceDate(date, now),
+      };
+    });
+  }, [nowTick]);
+
+  const eosTweetSnapshot = useMemo(() => {
+    const now = new Date(nowTick);
+    const postedAt = dateFromTweetSnowflake(EOS_TWEET_ID);
+    const daysSince = postedAt ? daysSinceDate(postedAt, now) : null;
+    return {
+      postedAt,
+      daysSince,
+      previewUrl: `https://platform.twitter.com/embed/Tweet.html?id=${EOS_TWEET_ID}&theme=dark&dnt=true`,
+    };
+  }, [nowTick]);
 
   const handleToolSearch = useCallback(
     (event: React.FormEvent) => {
@@ -219,14 +323,14 @@ export default function HomeCommandCenter() {
   );
 
   return (
-    <div className='min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.08),transparent_40%),radial-gradient(circle_at_top_left,rgba(245,158,11,0.08),transparent_45%)]'>
+    <div className='min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_42%),radial-gradient(circle_at_top_left,rgba(239,68,68,0.11),transparent_50%),linear-gradient(to_bottom,rgba(15,23,42,0.04),transparent_35%)]'>
       <div className='mx-auto flex w-full max-w-7xl flex-col gap-5 p-4 sm:p-6'>
         <Card className='border-border/60 bg-background/85 backdrop-blur'>
           <CardContent className='p-5 sm:p-7'>
             <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
-              <Badge variant='outline' className='gap-1.5'>
-                <Sparkles className='h-3.5 w-3.5' />
-                Home Command Center
+              <Badge variant='outline' className='gap-1.5 border-primary/30 bg-primary/5'>
+                <Globe2 className='h-3.5 w-3.5 text-primary' />
+                World Flipper Toolkit
               </Badge>
               <div className='flex flex-wrap items-center gap-2'>
                 <Link href='/calendar'>
@@ -243,9 +347,9 @@ export default function HomeCommandCenter() {
 
             <div className='grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]'>
               <div>
-                <h1 className='text-3xl font-semibold tracking-tight sm:text-4xl'>WF Toolkit Launchpad</h1>
+                <h1 className='text-3xl font-semibold tracking-tight sm:text-4xl'>Archive + Tools Home</h1>
                 <p className='mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base'>
-                  Jump directly to the right tool, inspect current dataset size, and start common workflows from one page.
+                  Browse through the world flipper assets and even edit your save data
                 </p>
               </div>
 
@@ -264,6 +368,80 @@ export default function HomeCommandCenter() {
                   <ArrowRight className='h-4 w-4' />
                 </Button>
               </form>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className='border-border/60 bg-background/85'>
+          <CardHeader className='pb-3'>
+            <CardTitle className='flex items-center gap-2 text-base'>
+              <Hourglass className='h-4 w-4 text-primary' />
+              Days Since EoS
+            </CardTitle>
+            <CardDescription>Server closure timeline and official EoS announcement reference.</CardDescription>
+          </CardHeader>
+          <CardContent className='grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]'>
+            <div className='grid gap-3 sm:grid-cols-3 xl:grid-cols-1'>
+              {eosSnapshot.map((milestone) => (
+                <div key={milestone.key} className={cn('rounded-lg border p-3', milestone.tone)}>
+                  <p className='text-xs uppercase tracking-wide text-muted-foreground'>{milestone.label}</p>
+                  <p className='mt-1 text-2xl font-semibold'>{milestone.daysSince.toLocaleString('en-US')} days</p>
+                  <p className='mt-1 text-xs text-muted-foreground'>
+                    Ended on{' '}
+                    {milestone.date.toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className='rounded-lg border border-border/70 bg-muted/10 p-3'>
+              <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
+                <div>
+                  <p className='text-sm font-medium'>WF Dimensions</p>
+                  <p className='text-xs text-muted-foreground'>
+                    {eosTweetSnapshot.daysSince !== null
+                      ? `${eosTweetSnapshot.daysSince.toLocaleString('en-US')} days since posted`
+                      : 'Tweet date unavailable'}
+                    {eosTweetSnapshot.postedAt && (
+                      <>
+                        {' '}
+                        (
+                        {eosTweetSnapshot.postedAt.toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                        })}
+                        )
+                      </>
+                    )}
+                  </p>
+                </div>
+                <Link href={EOS_TWEET_URL} target='_blank' rel='noopener noreferrer'>
+                  <Button size='sm' variant='outline' className='gap-1.5'>
+                    Open Tweet
+                    <ExternalLink className='h-3.5 w-3.5' />
+                  </Button>
+                </Link>
+              </div>
+              <div className='overflow-hidden rounded-md border bg-background'>
+                <iframe
+                  title='World Flipper EoS Tweet Preview'
+                  src={eosTweetSnapshot.previewUrl}
+                  className='h-[310px] w-full'
+                  loading='lazy'
+                />
+              </div>
+              <p className='mt-2 text-[11px] text-muted-foreground'>
+                If the embed is blocked by browser/network policy, use{' '}
+                <Link href={EOS_TWEET_URL} target='_blank' rel='noopener noreferrer' className='text-primary underline'>
+                  Open Tweet
+                </Link>
+                .
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -312,80 +490,7 @@ export default function HomeCommandCenter() {
           </CardContent>
         </Card>
 
-        <div className='grid gap-4 lg:grid-cols-3'>
-          <Card className='border-border/60 bg-background/85 lg:col-span-2'>
-            <CardHeader>
-              <CardTitle>Tool Launcher</CardTitle>
-              <CardDescription>
-                Click any card to jump into that section.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className='grid gap-3 sm:grid-cols-2'>
-              {filteredTools.map((tool) => {
-                const Icon = tool.icon;
-                return (
-                  <Link key={tool.href} href={tool.href} className='group'>
-                    <div className={cn('rounded-lg border bg-gradient-to-br p-4 transition hover:border-primary/40 hover:shadow-sm', tool.tone)}>
-                      <div className='mb-3 flex items-center justify-between'>
-                        <div className='rounded-md border bg-background/70 p-2'>
-                          <Icon className='h-4 w-4 text-primary' />
-                        </div>
-                        <ArrowRight className='h-4 w-4 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-primary' />
-                      </div>
-                      <p className='font-medium'>{tool.title}</p>
-                      <p className='mt-1 text-sm text-muted-foreground'>{tool.description}</p>
-                    </div>
-                  </Link>
-                );
-              })}
-              {filteredTools.length === 0 && (
-                <div className='col-span-full rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground'>
-                  No tools matched your search.
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className='border-border/60 bg-background/85'>
-            <CardHeader>
-              <CardTitle>Workflow Shortcuts</CardTitle>
-              <CardDescription>
-                Common flows you can run quickly.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className='space-y-3 text-sm'>
-              <div className='rounded-md border p-3'>
-                <p className='font-medium'>Event Recon</p>
-                <p className='mt-1 text-muted-foreground'>Use calendar filters, then open details modal for raw payload + assets.</p>
-                <Link href='/calendar' className='mt-2 inline-flex items-center gap-1 text-primary hover:underline'>
-                  Go to Calendar <ArrowRight className='h-3.5 w-3.5' />
-                </Link>
-              </div>
-              <div className='rounded-md border p-3'>
-                <p className='font-medium'>Banner Odds Audit</p>
-                <p className='mt-1 text-muted-foreground'>Scan gacha banners with artwork-first cards and inspect parsed + raw odds pools.</p>
-                <Link href='/gacha' className='mt-2 inline-flex items-center gap-1 text-primary hover:underline'>
-                  Go to Gacha <ArrowRight className='h-3.5 w-3.5' />
-                </Link>
-              </div>
-              <div className='rounded-md border p-3'>
-                <p className='font-medium'>Quest Asset Audit</p>
-                <p className='mt-1 text-muted-foreground'>Find quests with images/BGM and inspect each source path and fallback.</p>
-                <Link href='/quests' className='mt-2 inline-flex items-center gap-1 text-primary hover:underline'>
-                  Go to Quests <ArrowRight className='h-3.5 w-3.5' />
-                </Link>
-              </div>
-              <div className='rounded-md border p-3'>
-                <p className='font-medium'>Data Deep-Dive</p>
-                <p className='mt-1 text-muted-foreground'>Open OrderedMap explorer for direct file-level inspection and source comparisons.</p>
-                <Link href='/orderedmap' className='mt-2 inline-flex items-center gap-1 text-primary hover:underline'>
-                  Go to OrderedMap <ArrowRight className='h-3.5 w-3.5' />
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
-    </div>
   );
 }

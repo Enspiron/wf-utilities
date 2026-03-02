@@ -46,6 +46,9 @@ export async function generateMetadata({
     return {
       title: 'Character Not Found - WF Facemaker',
       description: 'Character not found in the database.',
+      icons: {
+        icon: '/favicon.ico',
+      },
     };
   }
 
@@ -58,10 +61,19 @@ export async function generateMetadata({
 
   // Use square_0 image from CDN for better quality in embeds
   const imageUrl = `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${character.faceCode}/ui/square_0.png`;
+  const faviconUrl = `/api/assets/image?url=${encodeURIComponent(imageUrl)}`;
 
   return {
     title: `${fullTitle} - WF Facemaker`,
     description: metaDescription.substring(0, 160),
+    icons: {
+      icon: [
+        { url: faviconUrl, type: 'image/png', sizes: '32x32' },
+        { url: faviconUrl, type: 'image/png', sizes: '192x192' },
+      ],
+      apple: [{ url: faviconUrl }],
+      shortcut: [faviconUrl],
+    },
     openGraph: {
       title: fullTitle,
       description: metaDescription.substring(0, 160),
