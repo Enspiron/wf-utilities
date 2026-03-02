@@ -301,6 +301,7 @@ const ELIYA_COMP_BLANK_TOKEN = 'blank';
 const RAW_JSON_INSPECT_MAX_SIZE = 1_500_000;
 const RAW_JSON_HIGHLIGHT_MAX_MATCHES = 48;
 const CDN_ROOT = 'https://wfjukebox.b-cdn.net';
+const DATA_FALLBACK_BASE = 'https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data';
 const ABILITY_TRACKS: Array<{ key: string; label: string; slots: number[] }> = [
   { key: 'abi1', label: 'Ability 1', slots: [0, 1, 2, 3, 4, 5] },
   { key: 'abi2', label: 'Ability 2', slots: [6, 7, 8, 9, 10, 11] },
@@ -566,6 +567,41 @@ function toCdnUrl(pathOrUrl: string): string {
   if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) return pathOrUrl;
   const clean = pathOrUrl.startsWith('/') ? pathOrUrl.slice(1) : pathOrUrl;
   return `${CDN_ROOT}/${hasImageExtension(clean) ? clean : `${clean}.png`}`;
+}
+
+function getDataFallbackUrls(pathOrUrl: string): string[] {
+  const normalized = pathOrUrl.trim();
+  if (!normalized) return [];
+  const urls = [normalized];
+  if (normalized.startsWith('/data/')) {
+    urls.push(`${DATA_FALLBACK_BASE}/${normalized.slice('/data/'.length)}`);
+  } else if (normalized.startsWith('data/')) {
+    urls.push(`${DATA_FALLBACK_BASE}/${normalized.slice('data/'.length)}`);
+  }
+
+  const unique = Array.from(new Set(urls));
+  const canCheckWindow = typeof window !== 'undefined';
+  const host = canCheckWindow ? window.location.hostname.toLowerCase() : '';
+  const isLocalHost = host === 'localhost' || host === '127.0.0.1';
+
+  // On deployed hosts where /public/data is excluded, prefer remote fallback first.
+  if (canCheckWindow && !isLocalHost && unique.length > 1) {
+    return [unique[1], unique[0], ...unique.slice(2)];
+  }
+
+  return unique;
+}
+
+async function fetchFirstAvailable(urls: string[], init?: RequestInit): Promise<Response | null> {
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, init);
+      if (response.ok) return response;
+    } catch {
+      // Try next fallback URL.
+    }
+  }
+  return null;
 }
 
 function buildCharacterThumbUrls(faceCode: string): string[] {
@@ -1551,21 +1587,23 @@ export default function SaveEditorPage() {
           exBoostStatusRes,
           exBoostAbilityRes,
         ] = await Promise.all([
-          fetch('/api/items', { cache: 'no-store' }),
-          fetch('/data/character.json', { cache: 'no-store' }),
-          fetch('/api/character-text?lang=en', { cache: 'no-store' }),
-          fetch('/api/character-text?lang=jp', { cache: 'no-store' }),
-          fetch('/api/manaboard/list', { cache: 'no-store' }),
-          fetch('/data/characters_all.json', { cache: 'no-store' }),
-          fetch('/data/mostly_complete_save.json', { cache: 'no-store' }),
-          fetch('/data/datalist/equipment_enhancement/equipment_enhancement_status.json', { cache: 'no-store' }),
-          fetch('/data/datalist/ex_boost/ex_status.json', { cache: 'no-store' }),
-          fetch('/data/datalist_en/ex_boost/ex_ability.json', { cache: 'no-store' }),
+          fetchFirstAvailable(['/api/items'], { cache: 'no-store' }),
+          fetchFirstAvailable(getDataFallbackUrls('/data/character.json'), { cache: 'no-store' }),
+          fetchFirstAvailable(['/api/character-text?lang=en'], { cache: 'no-store' }),
+          fetchFirstAvailable(['/api/character-text?lang=jp'], { cache: 'no-store' }),
+          fetchFirstAvailable(['/api/manaboard/list'], { cache: 'no-store' }),
+          fetchFirstAvailable(getDataFallbackUrls('/data/characters_all.json'), { cache: 'no-store' }),
+          fetchFirstAvailable(getDataFallbackUrls('/data/mostly_complete_save.json'), { cache: 'no-store' }),
+          fetchFirstAvailable(getDataFallbackUrls('/data/datalist/equipment_enhancement/equipment_enhancement_status.json'), {
+            cache: 'no-store',
+          }),
+          fetchFirstAvailable(getDataFallbackUrls('/data/datalist/ex_boost/ex_status.json'), { cache: 'no-store' }),
+          fetchFirstAvailable(getDataFallbackUrls('/data/datalist_en/ex_boost/ex_ability.json'), { cache: 'no-store' }),
         ]);
 
         if (canceled) return;
 
-        if (itemsRes.ok) {
+        if (itemsRes) {
           const itemsPayload = (await itemsRes.json()) as { items?: unknown[] };
           const nextItems: Record<string, ItemMeta> = {};
           for (const rawItem of itemsPayload.items ?? []) {
@@ -1586,10 +1624,10 @@ export default function SaveEditorPage() {
           setItemMetaById(nextItems);
         }
 
-        if (characterRes.ok) {
+        if (characterRes) {
           const characterJson = (await characterRes.json()) as Record<string, unknown>;
-          const charTextENPayload = charTextENRes.ok ? ((await charTextENRes.json()) as { data?: unknown }) : {};
-          const charTextJPPayload = charTextJPRes.ok ? ((await charTextJPRes.json()) as { data?: unknown }) : {};
+          const charTextENPayload = charTextENRes ? ((await charTextENRes.json()) as { data?: unknown }) : {};
+          const charTextJPPayload = charTextJPRes ? ((await charTextJPRes.json()) as { data?: unknown }) : {};
           const textEN = isObject(charTextENPayload.data) ? (charTextENPayload.data as Record<string, unknown>) : {};
           const textJP = isObject(charTextJPPayload.data) ? (charTextJPPayload.data as Record<string, unknown>) : {};
 
@@ -1616,7 +1654,7 @@ export default function SaveEditorPage() {
 
           setCharacterMetaById(nextCharacters);
 
-          if (charactersAllRes.ok) {
+          if (charactersAllRes) {
             const payload = (await charactersAllRes.json()) as { chars?: unknown[] };
             const faceCodeToId: Record<string, string> = {};
             for (const [id, meta] of Object.entries(nextCharacters)) {
@@ -1658,7 +1696,7 @@ export default function SaveEditorPage() {
             setCharacterCatalogMetaById(nextCatalogMetaById);
           }
 
-          if (mostlyCompleteRes.ok) {
+          if (mostlyCompleteRes) {
             const payload = (await mostlyCompleteRes.json()) as { data?: { user_character_mana_node_list?: unknown } };
             const nodeMap = isObject(payload.data?.user_character_mana_node_list)
               ? (payload.data?.user_character_mana_node_list as Record<string, unknown>)
@@ -1668,7 +1706,7 @@ export default function SaveEditorPage() {
           }
         }
 
-        if (manaBoardListRes.ok) {
+        if (manaBoardListRes) {
           const payload = (await manaBoardListRes.json()) as {
             characters?: Array<{ id?: unknown; boardNodeCounts?: unknown; hasBoard2?: unknown }>;
             requirementsByGroup?: Record<string, unknown>;
@@ -1712,7 +1750,7 @@ export default function SaveEditorPage() {
           setManaBoardRequirementsByGroup(nextRequirements);
         }
 
-        if (equipmentEnhancementStatusRes.ok) {
+        if (equipmentEnhancementStatusRes) {
           const payload = (await equipmentEnhancementStatusRes.json()) as Record<string, unknown>;
           const nextMap: Record<string, number[]> = {};
           for (const [equipmentId, rawStatuses] of Object.entries(payload)) {
@@ -1728,7 +1766,7 @@ export default function SaveEditorPage() {
           setEquipmentEnhancementOptionsById(nextMap);
         }
 
-        if (exBoostStatusRes.ok) {
+        if (exBoostStatusRes) {
           const payload = (await exBoostStatusRes.json()) as Record<string, unknown>;
           const nextMap: Record<string, ExBoostStatusMeta> = {};
           for (const [statusId, rawEntry] of Object.entries(payload)) {
@@ -1746,7 +1784,7 @@ export default function SaveEditorPage() {
           setExBoostStatusMetaById(nextMap);
         }
 
-        if (exBoostAbilityRes.ok) {
+        if (exBoostAbilityRes) {
           const payload = (await exBoostAbilityRes.json()) as Record<string, unknown>;
           const nextMap: Record<string, ExBoostAbilityMeta> = {};
           for (const [abilityId, rawEntry] of Object.entries(payload)) {
@@ -1781,18 +1819,20 @@ export default function SaveEditorPage() {
 
     (async () => {
       try {
-        const sourceRequests = STORY_QUEST_SOURCES.map((source) => fetch(source.path, { cache: 'no-store' }));
+        const sourceRequests = STORY_QUEST_SOURCES.map((source) =>
+          fetchFirstAvailable(getDataFallbackUrls(source.path), { cache: 'no-store' })
+        );
         const [questCategoryRes, mainChapterRes, exChapterRes, ...sourceResponses] = await Promise.all([
-          fetch('/data/datalist_en/quest/quest_category.json', { cache: 'no-store' }),
-          fetch('/data/datalist_en/quest/main_chapter.json', { cache: 'no-store' }),
-          fetch('/data/datalist_en/quest/ex_chapter.json', { cache: 'no-store' }),
+          fetchFirstAvailable(getDataFallbackUrls('/data/datalist_en/quest/quest_category.json'), { cache: 'no-store' }),
+          fetchFirstAvailable(getDataFallbackUrls('/data/datalist_en/quest/main_chapter.json'), { cache: 'no-store' }),
+          fetchFirstAvailable(getDataFallbackUrls('/data/datalist_en/quest/ex_chapter.json'), { cache: 'no-store' }),
           ...sourceRequests,
         ]);
 
         if (canceled) return;
 
         const categoryNameById: Record<string, string> = {};
-        if (questCategoryRes.ok) {
+        if (questCategoryRes) {
           const payload = (await questCategoryRes.json()) as Record<string, unknown>;
           for (const [categoryId, rawValue] of Object.entries(payload)) {
             if (!Array.isArray(rawValue)) continue;
@@ -1803,7 +1843,7 @@ export default function SaveEditorPage() {
         }
 
         const mainChapterNameById: Record<string, string> = {};
-        if (mainChapterRes.ok) {
+        if (mainChapterRes) {
           const payload = (await mainChapterRes.json()) as Record<string, unknown>;
           for (const [chapterId, rawValue] of Object.entries(payload)) {
             if (!Array.isArray(rawValue)) continue;
@@ -1814,7 +1854,7 @@ export default function SaveEditorPage() {
         }
 
         const exChapterNameById: Record<string, string> = {};
-        if (exChapterRes.ok) {
+        if (exChapterRes) {
           const payload = (await exChapterRes.json()) as Record<string, unknown>;
           for (const [chapterId, rawValue] of Object.entries(payload)) {
             if (!Array.isArray(rawValue)) continue;
@@ -1830,7 +1870,7 @@ export default function SaveEditorPage() {
         for (let index = 0; index < STORY_QUEST_SOURCES.length; index += 1) {
           const source = STORY_QUEST_SOURCES[index];
           const response = sourceResponses[index];
-          if (!response?.ok) continue;
+          if (!response) continue;
 
           const payload = (await response.json()) as unknown;
           const sourceCategoryName = getCategoryNameForSourceKey(source.key);
@@ -3399,9 +3439,9 @@ export default function SaveEditorPage() {
 
     try {
       const config = TEMPLATE_CONFIG[template];
-      const response = await fetch(config.path, { cache: 'no-store' });
-      if (!response.ok) {
-        throw new Error(`Template request failed (${response.status}).`);
+      const response = await fetchFirstAvailable(getDataFallbackUrls(config.path), { cache: 'no-store' });
+      if (!response) {
+        throw new Error('Template request failed (404).');
       }
       const text = await response.text();
       loadJsonText(text, config.label, config.fileName);
