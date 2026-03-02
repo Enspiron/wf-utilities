@@ -54,7 +54,10 @@ interface TrimRect {
   canvasHeight: number;
 }
 
-const OTHER_PART_EXPRESSIONS = ['shame.png', 'sweat.png', 'unknown.png'];
+type FaceTypeFilter = 'all' | 'playable' | 'npc';
+
+const OTHER_PART_EXPRESSION_STEMS = ['shame', 'sweat', 'unknown'];
+const OTHER_PART_EXPRESSION_PREFIXES = ['hibi_', 'guardian'];
 const DATA_FALLBACK_BASE = 'https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data';
 
 export default function FaceBuilder() {
@@ -67,6 +70,7 @@ export default function FaceBuilder() {
   const [loading, setLoading] = useState(true);
   const [selectedFace, setSelectedFace] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [faceTypeFilter, setFaceTypeFilter] = useState<FaceTypeFilter>('all');
   const [selectedBase, setSelectedBase] = useState<'0' | '1'>('0');
   const [selectedExpressions, setSelectedExpressions] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'compose' | 'browse'>('compose');
@@ -93,6 +97,17 @@ export default function FaceBuilder() {
   const normalizeAssetStem = useCallback((file: string) => {
     return file.replace(/\.(atf|png)$/i, '').toLowerCase();
   }, []);
+
+  const isOtherPartExpression = useCallback((expression: string) => {
+    const stem = normalizeAssetStem(expression);
+    if (OTHER_PART_EXPRESSION_STEMS.includes(stem)) {
+      return true;
+    }
+    if (selectedFace === 'zegura' && stem === 'cheek') {
+      return true;
+    }
+    return OTHER_PART_EXPRESSION_PREFIXES.some((prefix) => stem.startsWith(prefix));
+  }, [normalizeAssetStem, selectedFace]);
 
   const toPngFileName = useCallback((file: string) => {
     return `${normalizeAssetStem(file)}.png`;
@@ -202,13 +217,43 @@ export default function FaceBuilder() {
     }
   };
 
+  const faceTypeByName = useMemo(() => {
+    const map = new Map<string, Exclude<FaceTypeFilter, 'all'>>();
+    for (const face of faces) {
+      const uiFiles = faceUIData[face]?.ui?.files;
+      const hasBattleStatusIcon = Array.isArray(uiFiles) && uiFiles.some((file) => normalizeAssetStem(file) === 'battle_member_status_0');
+      map.set(face, hasBattleStatusIcon ? 'playable' : 'npc');
+    }
+    return map;
+  }, [faceUIData, faces, normalizeAssetStem]);
+
+  const faceTypeCounts = useMemo(() => {
+    let playable = 0;
+    let npc = 0;
+
+    for (const face of faces) {
+      if (faceTypeByName.get(face) === 'playable') playable += 1;
+      else npc += 1;
+    }
+
+    return {
+      all: faces.length,
+      playable,
+      npc,
+    };
+  }, [faceTypeByName, faces]);
+
   const filteredFaces = useMemo(() => {
     if (!Array.isArray(faces)) return [];
-    if (!searchTerm) return faces;
-    return faces.filter(face => 
-      face.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [faces, searchTerm]);
+    const normalizedSearch = searchTerm.toLowerCase();
+
+    return faces.filter((face) => {
+      const matchesSearch = !normalizedSearch || face.toLowerCase().includes(normalizedSearch);
+      if (!matchesSearch) return false;
+      if (faceTypeFilter === 'all') return true;
+      return faceTypeByName.get(face) === faceTypeFilter;
+    });
+  }, [faceTypeByName, faceTypeFilter, faces, searchTerm]);
 
   const currentFaceData = selectedFace ? faceUIData[selectedFace] : null;
   const selectedExpressionList = useMemo(() => Array.from(selectedExpressions), [selectedExpressions]);
@@ -277,12 +322,12 @@ export default function FaceBuilder() {
   const toggleExpression = (expression: string) => {
     setSelectedExpressions(prev => {
       const newSet = new Set(prev);
-      const isOtherPart = OTHER_PART_EXPRESSIONS.includes(expression);
+      const isOtherPart = isOtherPartExpression(expression);
       
       if (!isOtherPart) {
         // Main expressions are exclusive: keep one main face expression active.
         availableExpressions.forEach((exp) => {
-          if (!OTHER_PART_EXPRESSIONS.includes(exp)) {
+          if (!isOtherPartExpression(exp)) {
             newSet.delete(exp);
           }
         });
@@ -626,12 +671,11 @@ export default function FaceBuilder() {
   }, [selectedFace, fullShotAttributes]);
 
   const { mainExps, otherExps } = useMemo(() => {
-    const otherPartsSet = new Set(OTHER_PART_EXPRESSIONS);
     const main: string[] = [];
     const oth: string[] = [];
     
     availableExpressions.forEach(exp => {
-      if (otherPartsSet.has(exp)) {
+      if (isOtherPartExpression(exp)) {
         oth.push(exp);
       } else {
         main.push(exp);
@@ -639,7 +683,7 @@ export default function FaceBuilder() {
     });
     
     return { mainExps: main, otherExps: oth };
-  }, [availableExpressions]);
+  }, [availableExpressions, isOtherPartExpression]);
 
   if (loading) {
     return (
@@ -697,6 +741,35 @@ export default function FaceBuilder() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9"
               />
+            </div>
+            <div className="mt-2 flex gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant={faceTypeFilter === 'all' ? 'default' : 'outline'}
+                className="h-7 px-2 text-[11px]"
+                onClick={() => setFaceTypeFilter('all')}
+              >
+                All ({faceTypeCounts.all})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={faceTypeFilter === 'playable' ? 'default' : 'outline'}
+                className="h-7 px-2 text-[11px]"
+                onClick={() => setFaceTypeFilter('playable')}
+              >
+                Playable ({faceTypeCounts.playable})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={faceTypeFilter === 'npc' ? 'default' : 'outline'}
+                className="h-7 px-2 text-[11px]"
+                onClick={() => setFaceTypeFilter('npc')}
+              >
+                NPC ({faceTypeCounts.npc})
+              </Button>
             </div>
             <div className="mt-2 text-xs text-muted-foreground">
               {filteredFaces.length} face{filteredFaces.length !== 1 ? 's' : ''} available

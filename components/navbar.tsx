@@ -45,6 +45,7 @@ type NavGroup = {
 };
 
 const HOME_ITEM: NavItem = { href: '/', label: 'Home', icon: Home };
+const SAVE_EDITOR_ITEM: NavItem = { href: '/save-editor', label: 'Save Editor', icon: FileJson };
 
 const NAV_GROUPS: NavGroup[] = [
   {
@@ -100,7 +101,7 @@ export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [quickJumpOpen, setQuickJumpOpen] = useState(false);
 
-  const allItems = useMemo(() => [HOME_ITEM, ...NAV_GROUPS.flatMap((group) => group.items)], []);
+  const allItems = useMemo(() => [HOME_ITEM, SAVE_EDITOR_ITEM, ...NAV_GROUPS.flatMap((group) => group.items)], []);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -140,6 +141,19 @@ export function Navbar() {
             >
               <HOME_ITEM.icon className="h-4 w-4" />
               {HOME_ITEM.label}
+            </Link>
+            <Link
+              href={SAVE_EDITOR_ITEM.href}
+              onClick={() => setQuickJumpOpen(false)}
+              className={cn(
+                "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                isActivePath(pathname, SAVE_EDITOR_ITEM.href)
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              )}
+            >
+              <SAVE_EDITOR_ITEM.icon className="h-4 w-4" />
+              {SAVE_EDITOR_ITEM.label}
             </Link>
 
             {NAV_GROUPS.map((group) => {
@@ -247,6 +261,19 @@ export function Navbar() {
               >
                 <HOME_ITEM.icon className="h-4 w-4" />
                 {HOME_ITEM.label}
+              </Link>
+              <Link
+                href={SAVE_EDITOR_ITEM.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  isActivePath(pathname, SAVE_EDITOR_ITEM.href)
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                )}
+              >
+                <SAVE_EDITOR_ITEM.icon className="h-4 w-4" />
+                {SAVE_EDITOR_ITEM.label}
               </Link>
 
               {NAV_GROUPS.map((group) => (

@@ -22,6 +22,8 @@ type QuestMode = (typeof MODE_OPTIONS)[number]["value"];
 const ITEMS_PER_PAGE = 48;
 
 const CDN_ROOT = "https://wfjukebox.b-cdn.net";
+const MUSIC_CDN_ROOT = "https://wfjukebox.b-cdn.net/music";
+const BGM_PATH_RE = /\/?bgm\/[A-Za-z0-9._/-]+/gi;
 
 const hasImageExtension = (s: string) => /\.(png|jpe?g|webp|svg|gif)$/i.test(s);
 
@@ -37,6 +39,30 @@ const buildAudioUrl = (s?: string) => {
   if (s.startsWith("http://") || s.startsWith("https://")) return s;
   const path = s.startsWith("/") ? s.slice(1) : s;
   return /\.mp3$/i.test(path) ? `${CDN_ROOT}/${path}` : `${CDN_ROOT}/${path}.mp3`;
+};
+
+const buildAudioFallbackUrls = (pathValue: string) => {
+  const path = normalizeAssetPath(pathValue).replace(/\.mp3$/i, "");
+  const result: string[] = [buildAudioUrl(path)];
+
+  if (path.startsWith("bgm/world_")) {
+    result.push(`${MUSIC_CDN_ROOT}/StoryBGM/${path.replace(/^bgm\//, "")}.mp3`);
+  } else if (path.startsWith("bgm/event/")) {
+    result.push(`${MUSIC_CDN_ROOT}/${path.replace(/^bgm\//, "")}.mp3`);
+  } else if (path.startsWith("bgm/common/")) {
+    result.push(`${MUSIC_CDN_ROOT}/${path.replace(/^bgm\//, "")}.mp3`);
+  } else if (path.startsWith("bgm/")) {
+    result.push(`${MUSIC_CDN_ROOT}/${path.replace(/^bgm\//, "")}.mp3`);
+  }
+
+  return Array.from(new Set(result.filter(Boolean)));
+};
+
+const extractBgmTokens = (input: string) => {
+  const matches = input.match(BGM_PATH_RE) || [];
+  return matches
+    .map((token) => token.replace(/[),.;]+$/, "").trim())
+    .filter((token) => Boolean(token));
 };
 
 const getSourceFile = (item: ParsedItem) => {
@@ -122,8 +148,11 @@ const collectDirectoryLikeStrings = (value: unknown, out: Set<string>) => {
 
 const collectBgmPaths = (value: unknown, out: Set<string>) => {
   if (typeof value === "string") {
-    const normalized = normalizeAssetPath(value);
-    if (normalized.startsWith("bgm/")) out.add(normalized);
+    const tokens = extractBgmTokens(value);
+    for (const token of tokens) {
+      const normalized = normalizeAssetPath(token);
+      if (normalized.startsWith("bgm/")) out.add(normalized);
+    }
     return;
   }
   if (Array.isArray(value)) {
@@ -173,7 +202,13 @@ const getImageCandidates = (item: ParsedItem) => {
 const getBgmCandidates = (item: ParsedItem) => {
   const paths = new Set<string>();
   collectBgmPaths(item.data, paths);
-  return [...paths].map((p) => buildAudioUrl(p));
+  const urls = new Set<string>();
+  for (const path of paths) {
+    for (const url of buildAudioFallbackUrls(path)) {
+      urls.add(url);
+    }
+  }
+  return [...urls];
 };
 
 function MissingImagePlaceholder({ compact = false }: { compact?: boolean }) {
@@ -215,6 +250,90 @@ function QuestImage({
       unoptimized={true}
       onError={() => setIndex((prev) => prev + 1)}
     />
+  );
+}
+
+function QuestImageGallery({ item }: { item: ParsedItem }) {
+  const candidates = useMemo(() => getImageCandidates(item), [item]);
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(new Set());
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  const visibleCandidates = candidates.filter((url) => !failedUrls.has(url));
+  if (candidates.length === 0) return null;
+
+  return (
+    <div className="rounded-md border bg-muted/20 p-3">
+      <p className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">
+        Detected Images ({visibleCandidates.length}/{candidates.length})
+      </p>
+
+      {visibleCandidates.length > 0 ? (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {visibleCandidates.map((url) => (
+            <button
+              key={url}
+              type="button"
+              onClick={() => setPreviewUrl(url)}
+              className="overflow-hidden rounded-md border bg-background/80 p-1 text-left transition hover:border-primary/40"
+              title="Open large preview"
+            >
+              <div className="flex h-16 items-center justify-center rounded bg-muted/30">
+                <Image
+                  src={url}
+                  alt="Quest asset"
+                  width={88}
+                  height={64}
+                  unoptimized={true}
+                  style={{ objectFit: "contain", imageRendering: "pixelated" }}
+                  onError={() =>
+                    setFailedUrls((prev) => {
+                      if (prev.has(url)) return prev;
+                      const next = new Set(prev);
+                      next.add(url);
+                      return next;
+                    })
+                  }
+                />
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+          No detected image URLs loaded successfully.
+        </div>
+      )}
+
+      {failedUrls.size > 0 && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          {failedUrls.size} candidate URL{failedUrls.size === 1 ? "" : "s"} failed to load.
+        </p>
+      )}
+
+      <Dialog open={!!previewUrl} onOpenChange={(open) => !open && setPreviewUrl(null)}>
+        <DialogContent className="max-h-[92vh] max-w-5xl overflow-hidden p-3 sm:p-4">
+          {previewUrl && (
+            <>
+              <DialogTitle className="sr-only">Quest Image Preview</DialogTitle>
+              <DialogDescription className="sr-only">
+                Full-size preview of the selected quest event image candidate.
+              </DialogDescription>
+              <div className="flex max-h-[80vh] items-center justify-center overflow-hidden rounded-md border bg-muted/20 p-2">
+                <Image
+                  src={previewUrl}
+                  alt="Quest image preview"
+                  width={1400}
+                  height={1000}
+                  unoptimized={true}
+                  className="h-auto max-h-[76vh] w-auto max-w-full object-contain"
+                />
+              </div>
+              <p className="mt-2 break-all text-xs text-muted-foreground">{previewUrl}</p>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 
@@ -391,6 +510,7 @@ export default function QuestViewerPage() {
                       <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Source File</p>
                       <p className="break-all font-mono text-xs">{getSourceFile(selectedItem)}</p>
                     </div>
+                    <QuestImageGallery key={`${selectedItem.id}-${getSourceFile(selectedItem)}-gallery`} item={selectedItem} />
                     <QuestAudio key={`${selectedItem.id}-${getSourceFile(selectedItem)}-audio`} item={selectedItem} />
                     {getLongDescription(selectedItem) ? (
                       <div className="rounded-md border bg-muted/20 p-3 text-sm leading-6">
