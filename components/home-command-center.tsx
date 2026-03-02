@@ -156,6 +156,8 @@ const EOS_MILESTONES: EosMilestone[] = [
 const EOS_TWEET_URL = 'https://twitter.com/world_flipper/status/1765663775401836851';
 const EOS_TWEET_ID = '1765663775401836851';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const TWITTER_SNOWFLAKE_SHIFT = BigInt(22);
+const TWITTER_EPOCH_MS = BigInt('1288834974657');
 
 function toUtcDayTimestamp(value: Date): number {
   return Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
@@ -172,7 +174,7 @@ function daysSinceDate(target: Date, now: Date): number {
 function dateFromTweetSnowflake(id: string): Date | null {
   try {
     const snowflake = BigInt(id);
-    const timestampMs = Number((snowflake >> 22n) + 1288834974657n);
+    const timestampMs = Number((snowflake >> TWITTER_SNOWFLAKE_SHIFT) + TWITTER_EPOCH_MS);
     if (!Number.isFinite(timestampMs) || timestampMs <= 0) return null;
     return new Date(timestampMs);
   } catch {
