@@ -53,7 +53,6 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Database,
     items: [
       { href: '/characters', label: 'Characters', icon: Database },
-      { href: '/characters-v2', label: 'Characters V2', icon: Sparkles },
       { href: '/items', label: 'Items', icon: Package },
       { href: '/quests', label: 'Quests', icon: FileJson },
     ],

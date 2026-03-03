@@ -1,0 +1,835 @@
+   1: 'use client';
+   2: 
+   3: import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+   4: import Image from 'next/image';
+   5: import {
+   6:   ArrowUpDown,
+   7:   Grid3x3,
+   8:   List,
+   9:   Loader2,
+  10:   Package2,
+  11:   RefreshCw,
+  12:   Search,
+  13:   SlidersHorizontal,
+  14:   Sparkles,
+  15:   X,
+  16: } from 'lucide-react';
+  17: import { Badge } from '@/components/ui/badge';
+  18: import { Button } from '@/components/ui/button';
+  19: import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+  20: import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+  21: import { Input } from '@/components/ui/input';
+  22: import { ScrollArea } from '@/components/ui/scroll-area';
+  23: import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+  24: import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+  25: import { cn } from '@/lib/utils';
+  26: import type { Item } from '../api/items/route';
+  27: 
+  28: const CDN_ROOT = 'https://wfjukebox.b-cdn.net';
+  29: const GRID_PAGE_SIZE = 108;
+  30: const LIST_PAGE_SIZE = 42;
+  31: 
+  32: const RARITY_ICON_MAP: Record<number, string> = {
+  33:   1: '/FilterIcons/rarity/rarity_one.png',
+  34:   2: '/FilterIcons/rarity/rarity_two.png',
+  35:   3: '/FilterIcons/rarity/rarity_three.png',
+  36:   4: '/FilterIcons/rarity/rarity_four.png',
+  37:   5: '/FilterIcons/rarity/rarity_five.png',
+  38: };
+  39: 
+  40: const SORT_OPTIONS = [
+  41:   { value: 'name_asc', label: 'Name A-Z' },
+  42:   { value: 'name_desc', label: 'Name Z-A' },
+  43:   { value: 'id_asc', label: 'ID (Low to High)' },
+  44:   { value: 'id_desc', label: 'ID (High to Low)' },
+  45:   { value: 'rarity_desc', label: 'Rarity (High to Low)' },
+  46:   { value: 'rarity_asc', label: 'Rarity (Low to High)' },
+  47: ] as const;
+  48: 
+  49: type SortKey = (typeof SORT_OPTIONS)[number]['value'];
+  50: type ViewMode = 'grid' | 'list';
+  51: type ItemTypeFilter = 'all' | Item['type'];
+  52: 
+  53: const hasImageExtension = (value: string) => /\.(png|jpe?g|webp|gif|svg)$/i.test(value);
+  54: 
+  55: const buildImageUrl = (value: string) => {
+  56:   if (value.startsWith('http://') || value.startsWith('https://')) return value;
+  57:   const normalized = value.replace(/^\/+/, '');
+  58:   return `${CDN_ROOT}/${hasImageExtension(normalized) ? normalized : `${normalized}.png`}`;
+  59: };
+  60: 
+  61: const getImageCandidates = (item: Item) => {
+  62:   const seen = new Set<string>();
+  63:   const candidates: string[] = [];
+  64:   const pushCandidate = (raw?: string) => {
+  65:     if (!raw || !raw.trim()) return;
+  66:     const url = buildImageUrl(raw.trim());
+  67:     if (seen.has(url)) return;
+  68:     seen.add(url);
+  69:     candidates.push(url);
+  70:   };
+  71:   pushCandidate(item.thumbnail);
+  72:   pushCandidate(item.icon);
+  73:   return candidates;
+  74: };
+  75: 
+  76: const clampRarity = (value: number) => {
+  77:   const parsed = Number.isFinite(value) ? Math.round(value) : 1;
+  78:   return Math.max(1, Math.min(5, parsed));
+  79: };
+  80: 
+  81: function ItemArtwork({
+  82:   item,
+  83:   className,
+  84:   iconClassName,
+  85: }: {
+  86:   item: Item;
+  87:   className?: string;
+  88:   iconClassName?: string;
+  89: }) {
+  90:   const candidates = useMemo(() => getImageCandidates(item), [item.icon, item.thumbnail]);
+  91:   const candidateKey = candidates.join('|');
+  92:   const [candidateIndex, setCandidateIndex] = useState(0);
+  93: 
+  94:   useEffect(() => {
+  95:     setCandidateIndex(0);
+  96:   }, [candidateKey]);
+  97: 
+  98:   if (candidateIndex >= candidates.length) {
+  99:     return (
+ 100:       <div className={cn('flex h-full w-full items-center justify-center rounded-md border border-dashed border-border/60', className)}>
+ 101:         <Package2 className='h-6 w-6 text-muted-foreground' />
+ 102:       </div>
+ 103:     );
+ 104:   }
+ 105: 
+ 106:   return (
+ 107:     <div className={cn('flex h-full w-full items-center justify-center rounded-md bg-background/40', className)}>
+ 108:       <Image
+ 109:         src={candidates[candidateIndex]}
+ 110:         alt={item.name}
+ 111:         width={120}
+ 112:         height={120}
+ 113:         className={cn('h-full w-full object-contain [image-rendering:pixelated]', iconClassName)}
+ 114:         unoptimized={true}
+ 115:         onError={() => setCandidateIndex((prev) => prev + 1)}
+ 116:       />
+ 117:     </div>
+ 118:   );
+ 119: }
+ 120: 
+ 121: function RarityIcon({ rarity, className }: { rarity: number; className?: string }) {
+ 122:   const rarityLevel = clampRarity(rarity);
+ 123:   return (
+ 124:     <Image
+ 125:       src={RARITY_ICON_MAP[rarityLevel]}
+ 126:       alt={`${rarityLevel}-star rarity`}
+ 127:       width={108}
+ 128:       height={22}
+ 129:       className={cn('h-[18px] w-auto [image-rendering:pixelated]', className)}
+ 130:       unoptimized={true}
+ 131:     />
+ 132:   );
+ 133: }
+ 134: 
+ 135: export default function ItemsPage() {
+ 136:   const [items, setItems] = useState<Item[]>([]);
+ 137:   const [loading, setLoading] = useState(true);
+ 138:   const [error, setError] = useState<string | null>(null);
+ 139:   const [reloadToken, setReloadToken] = useState(0);
+ 140: 
+ 141:   const [search, setSearch] = useState('');
+ 142:   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
+ 143: 
+ 144:   const [typeFilter, setTypeFilter] = useState<ItemTypeFilter>('all');
+ 145:   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+ 146:   const [selectedRarities, setSelectedRarities] = useState<number[]>([]);
+ 147:   const [onlyWithArtwork, setOnlyWithArtwork] = useState(false);
+ 148: 
+ 149:   const [sortBy, setSortBy] = useState<SortKey>('name_asc');
+ 150:   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+ 151:   const [currentPage, setCurrentPage] = useState(1);
+ 152: 
+ 153:   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+ 154:   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+ 155: 
+ 156:   useEffect(() => {
+ 157:     let active = true;
+ 158:     setLoading(true);
+ 159:     setError(null);
+ 160: 
+ 161:     fetch('/api/items')
+ 162:       .then((response) => response.json())
+ 163:       .then((payload) => {
+ 164:         if (!active) return;
+ 165:         setItems(Array.isArray(payload.items) ? payload.items : []);
+ 166:       })
+ 167:       .catch((fetchError) => {
+ 168:         if (!active) return;
+ 169:         console.error('Failed to load items:', fetchError);
+ 170:         setError('Failed to load items. Please try again.');
+ 171:       })
+ 172:       .finally(() => {
+ 173:         if (!active) return;
+ 174:         setLoading(false);
+ 175:       });
+ 176: 
+ 177:     return () => {
+ 178:       active = false;
+ 179:     };
+ 180:   }, [reloadToken]);
+ 181: 
+ 182:   const typedItems = useMemo(() => {
+ 183:     if (typeFilter === 'all') return items;
+ 184:     return items.filter((item) => item.type === typeFilter);
+ 185:   }, [items, typeFilter]);
+ 186: 
+ 187:   const categoryCounts = useMemo(() => {
+ 188:     const counts = new Map<string, number>();
+ 189:     for (const item of typedItems) {
+ 190:       counts.set(item.category, (counts.get(item.category) || 0) + 1);
+ 191:     }
+ 192:     return counts;
+ 193:   }, [typedItems]);
+ 194: 
+ 195:   const categoryOptions = useMemo(
+ 196:     () =>
+ 197:       [...categoryCounts.entries()].sort((a, b) => {
+ 198:         if (b[1] !== a[1]) return b[1] - a[1];
+ 199:         return a[0].localeCompare(b[0]);
+ 200:       }),
+ 201:     [categoryCounts]
+ 202:   );
+ 203: 
+ 204:   const rarityCounts = useMemo(() => {
+ 205:     const counts = new Map<number, number>();
+ 206:     for (const item of typedItems) {
+ 207:       const rarity = clampRarity(item.rarity);
+ 208:       counts.set(rarity, (counts.get(rarity) || 0) + 1);
+ 209:     }
+ 210:     return counts;
+ 211:   }, [typedItems]);
+ 212: 
+ 213:   const filteredItems = useMemo(() => {
+ 214:     const result = typedItems.filter((item) => {
+ 215:       if (deferredSearch) {
+ 216:         const haystack = `${item.id} ${item.name} ${item.devname} ${item.description} ${item.flavorText || ''} ${item.category}`.toLowerCase();
+ 217:         if (!haystack.includes(deferredSearch)) {
+ 218:           return false;
+ 219:         }
+ 220:       }
+ 221: 
+ 222:       if (selectedCategories.length > 0 && !selectedCategories.includes(item.category)) {
+ 223:         return false;
+ 224:       }
+ 225: 
+ 226:       if (selectedRarities.length > 0 && !selectedRarities.includes(clampRarity(item.rarity))) {
+ 227:         return false;
+ 228:       }
+ 229: 
+ 230:       if (onlyWithArtwork && getImageCandidates(item).length === 0) {
+ 231:         return false;
+ 232:       }
+ 233: 
+ 234:       return true;
+ 235:     });
+ 236: 
+ 237:     const sorted = [...result];
+ 238:     sorted.sort((a, b) => {
+ 239:       switch (sortBy) {
+ 240:         case 'name_desc':
+ 241:           return b.name.localeCompare(a.name, undefined, { sensitivity: 'base' });
+ 242:         case 'id_asc': {
+ 243:           const aNum = Number.parseInt(a.id, 10);
+ 244:           const bNum = Number.parseInt(b.id, 10);
+ 245:           if (Number.isFinite(aNum) && Number.isFinite(bNum)) return aNum - bNum;
+ 246:           return a.id.localeCompare(b.id);
+ 247:         }
+ 248:         case 'id_desc': {
+ 249:           const aNum = Number.parseInt(a.id, 10);
+ 250:           const bNum = Number.parseInt(b.id, 10);
+ 251:           if (Number.isFinite(aNum) && Number.isFinite(bNum)) return bNum - aNum;
+ 252:           return b.id.localeCompare(a.id);
+ 253:         }
+ 254:         case 'rarity_desc': {
+ 255:           const rarityDiff = clampRarity(b.rarity) - clampRarity(a.rarity);
+ 256:           return rarityDiff !== 0 ? rarityDiff : a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+ 257:         }
+ 258:         case 'rarity_asc': {
+ 259:           const rarityDiff = clampRarity(a.rarity) - clampRarity(b.rarity);
+ 260:           return rarityDiff !== 0 ? rarityDiff : a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+ 261:         }
+ 262:         case 'name_asc':
+ 263:         default:
+ 264:           return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+ 265:       }
+ 266:     });
+ 267: 
+ 268:     return sorted;
+ 269:   }, [deferredSearch, onlyWithArtwork, selectedCategories, selectedRarities, sortBy, typedItems]);
+ 270: 
+ 271:   const itemsPerPage = viewMode === 'grid' ? GRID_PAGE_SIZE : LIST_PAGE_SIZE;
+ 272:   const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
+ 273:   const safePage = Math.min(currentPage, totalPages);
+ 274: 
+ 275:   useEffect(() => {
+ 276:     setCurrentPage(1);
+ 277:   }, [deferredSearch, onlyWithArtwork, selectedCategories, selectedRarities, sortBy, typeFilter, viewMode]);
+ 278: 
+ 279:   useEffect(() => {
+ 280:     if (currentPage > totalPages) {
+ 281:       setCurrentPage(totalPages);
+ 282:     }
+ 283:   }, [currentPage, totalPages]);
+ 284: 
+ 285:   const paginatedItems = useMemo(() => {
+ 286:     const start = (safePage - 1) * itemsPerPage;
+ 287:     return filteredItems.slice(start, start + itemsPerPage);
+ 288:   }, [filteredItems, itemsPerPage, safePage]);
+ 289: 
+ 290:   const activeFilterCount = useMemo(() => {
+ 291:     let count = 0;
+ 292:     if (typeFilter !== 'all') count += 1;
+ 293:     if (selectedCategories.length > 0) count += selectedCategories.length;
+ 294:     if (selectedRarities.length > 0) count += selectedRarities.length;
+ 295:     if (onlyWithArtwork) count += 1;
+ 296:     return count;
+ 297:   }, [onlyWithArtwork, selectedCategories.length, selectedRarities.length, typeFilter]);
+ 298: 
+ 299:   const paginationSlots = useMemo(() => {
+ 300:     if (totalPages <= 7) {
+ 301:       return Array.from({ length: totalPages }, (_, index) => index + 1);
+ 302:     }
+ 303: 
+ 304:     const slots: Array<number | 'ellipsis-start' | 'ellipsis-end'> = [1];
+ 305:     const start = Math.max(2, safePage - 1);
+ 306:     const end = Math.min(totalPages - 1, safePage + 1);
+ 307: 
+ 308:     if (start > 2) slots.push('ellipsis-start');
+ 309:     for (let page = start; page <= end; page += 1) slots.push(page);
+ 310:     if (end < totalPages - 1) slots.push('ellipsis-end');
+ 311:     slots.push(totalPages);
+ 312: 
+ 313:     return slots;
+ 314:   }, [safePage, totalPages]);
+ 315: 
+ 316:   const resultRangeLabel = useMemo(() => {
+ 317:     if (filteredItems.length === 0) return 'Showing 0 results';
+ 318:     const start = (safePage - 1) * itemsPerPage + 1;
+ 319:     const end = Math.min(safePage * itemsPerPage, filteredItems.length);
+ 320:     return `Showing ${start}-${end} of ${filteredItems.length} results`;
+ 321:   }, [filteredItems.length, itemsPerPage, safePage]);
+ 322: 
+ 323:   const clearAllFilters = () => {
+ 324:     setTypeFilter('all');
+ 325:     setSelectedCategories([]);
+ 326:     setSelectedRarities([]);
+ 327:     setOnlyWithArtwork(false);
+ 328:   };
+ 329: 
+ 330:   const toggleCategory = (category: string) => {
+ 331:     setSelectedCategories((prev) =>
+ 332:       prev.includes(category) ? prev.filter((value) => value !== category) : [...prev, category]
+ 333:     );
+ 334:   };
+ 335: 
+ 336:   const toggleRarity = (rarity: number) => {
+ 337:     setSelectedRarities((prev) =>
+ 338:       prev.includes(rarity) ? prev.filter((value) => value !== rarity) : [...prev, rarity]
+ 339:     );
+ 340:   };
+ 341: 
+ 342:   const FilterPanel = ({ mobile = false }: { mobile?: boolean }) => (
+ 343:     <div className='space-y-5'>
+ 344:       <div className='space-y-2'>
+ 345:         <p className='text-xs font-semibold uppercase tracking-wide text-muted-foreground'>Type</p>
+ 346:         <div className='grid grid-cols-3 gap-2'>
+ 347:           {[
+ 348:             { key: 'all' as const, label: 'All' },
+ 349:             { key: 'item' as const, label: 'Items' },
+ 350:             { key: 'equipment' as const, label: 'Equipment' },
+ 351:           ].map((option) => (
+ 352:             <Button
+ 353:               key={option.key}
+ 354:               type='button'
+ 355:               size='sm'
+ 356:               variant={typeFilter === option.key ? 'default' : 'outline'}
+ 357:               className='h-8 text-xs'
+ 358:               onClick={() => setTypeFilter(option.key)}
+ 359:             >
+ 360:               {option.label}
+ 361:             </Button>
+ 362:           ))}
+ 363:         </div>
+ 364:       </div>
+ 365: 
+ 366:       <div className='space-y-2'>
+ 367:         <p className='text-xs font-semibold uppercase tracking-wide text-muted-foreground'>Rarity</p>
+ 368:         <div className='flex flex-wrap gap-2'>
+ 369:           {[1, 2, 3, 4, 5].map((rarity) => {
+ 370:             const count = rarityCounts.get(rarity) || 0;
+ 371:             if (count === 0) return null;
+ 372:             const selected = selectedRarities.includes(rarity);
+ 373:             return (
+ 374:               <button
+ 375:                 key={rarity}
+ 376:                 type='button'
+ 377:                 onClick={() => toggleRarity(rarity)}
+ 378:                 className={cn(
+ 379:                   'inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs transition-colors',
+ 380:                   selected
+ 381:                     ? 'border-primary bg-primary/10 text-primary'
+ 382:                     : 'border-border bg-card/60 text-muted-foreground hover:border-primary/40 hover:text-foreground'
+ 383:                 )}
+ 384:               >
+ 385:                 <RarityIcon rarity={rarity} />
+ 386:                 <span>{count}</span>
+ 387:               </button>
+ 388:             );
+ 389:           })}
+ 390:         </div>
+ 391:       </div>
+ 392: 
+ 393:       <div className='space-y-2'>
+ 394:         <div className='flex items-center justify-between'>
+ 395:           <p className='text-xs font-semibold uppercase tracking-wide text-muted-foreground'>Category</p>
+ 396:           {selectedCategories.length > 0 && (
+ 397:             <Button variant='ghost' size='sm' className='h-7 px-2 text-xs' onClick={() => setSelectedCategories([])}>
+ 398:               Clear
+ 399:             </Button>
+ 400:           )}
+ 401:         </div>
+ 402:         <ScrollArea className={cn('rounded-md border', mobile ? 'h-56' : 'h-[22rem]')}>
+ 403:           <div className='space-y-1 p-2'>
+ 404:             {categoryOptions.map(([category, count]) => (
+ 405:               <button
+ 406:                 key={category}
+ 407:                 type='button'
+ 408:                 onClick={() => toggleCategory(category)}
+ 409:                 className={cn(
+ 410:                   'flex w-full items-center justify-between rounded-md border px-2 py-1.5 text-left text-xs transition-colors',
+ 411:                   selectedCategories.includes(category)
+ 412:                     ? 'border-primary bg-primary/10 text-primary'
+ 413:                     : 'border-border bg-card/60 text-muted-foreground hover:border-primary/40 hover:text-foreground'
+ 414:                 )}
+ 415:               >
+ 416:                 <span className='truncate pr-2'>{category}</span>
+ 417:                 <Badge variant='secondary' className='h-5 min-w-6 justify-center px-1.5 text-[10px]'>
+ 418:                   {count}
+ 419:                 </Badge>
+ 420:               </button>
+ 421:             ))}
+ 422:           </div>
+ 423:         </ScrollArea>
+ 424:       </div>
+ 425: 
+ 426:       <div className='space-y-2'>
+ 427:         <p className='text-xs font-semibold uppercase tracking-wide text-muted-foreground'>Advanced</p>
+ 428:         <Button
+ 429:           type='button'
+ 430:           variant={onlyWithArtwork ? 'default' : 'outline'}
+ 431:           className='h-8 w-full justify-start text-xs'
+ 432:           onClick={() => setOnlyWithArtwork((prev) => !prev)}
+ 433:         >
+ 434:           <Sparkles className='mr-2 h-3.5 w-3.5' />
+ 435:           Has artwork only
+ 436:         </Button>
+ 437:       </div>
+ 438: 
+ 439:       <Button type='button' variant='outline' className='h-8 w-full text-xs' onClick={clearAllFilters}>
+ 440:         Reset Filters
+ 441:       </Button>
+ 442:     </div>
+ 443:   );
+ 444: 
+ 445:   if (loading) {
+ 446:     return (
+ 447:       <div className='flex min-h-[calc(100vh-4rem)] items-center justify-center'>
+ 448:         <div className='inline-flex items-center gap-2 rounded-md border bg-card/70 px-4 py-2 text-sm text-muted-foreground'>
+ 449:           <Loader2 className='h-4 w-4 animate-spin' />
+ 450:           Loading items...
+ 451:         </div>
+ 452:       </div>
+ 453:     );
+ 454:   }
+ 455: 
+ 456:   if (error) {
+ 457:     return (
+ 458:       <div className='mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl items-center justify-center px-4'>
+ 459:         <Card className='w-full max-w-xl border-destructive/40 bg-card/80'>
+ 460:           <CardHeader>
+ 461:             <CardTitle className='text-lg'>Could not load items</CardTitle>
+ 462:           </CardHeader>
+ 463:           <CardContent className='space-y-4'>
+ 464:             <p className='text-sm text-muted-foreground'>{error}</p>
+ 465:             <Button variant='outline' onClick={() => setReloadToken((prev) => prev + 1)}>
+ 466:               <RefreshCw className='mr-2 h-4 w-4' />
+ 467:               Retry
+ 468:             </Button>
+ 469:           </CardContent>
+ 470:         </Card>
+ 471:       </div>
+ 472:     );
+ 473:   }
+ 474: 
+ 475:   return (
+ 476:     <div className='mx-auto w-full max-w-[1800px] px-4 py-4 sm:px-5 sm:py-5'>
+ 477:       <Card className='mb-4 border-border/70 bg-gradient-to-r from-background via-background to-muted/20'>
+ 478:         <CardContent className='space-y-3 p-4 sm:p-5'>
+ 479:           <div className='flex flex-wrap items-start justify-between gap-3'>
+ 480:             <div>
+ 481:               <h1 className='text-xl font-semibold tracking-tight sm:text-2xl'>Items Archive</h1>
+ 482:               <p className='text-sm text-muted-foreground'>
+ 483:                 Browse and inspect every EN item and equipment entry with fast filters and detail view.
+ 484:               </p>
+ 485:             </div>
+ 486:             <div className='grid grid-cols-2 gap-2 text-xs sm:grid-cols-4'>
+ 487:               <div className='rounded-md border bg-background/60 px-3 py-2'>
+ 488:                 <p className='text-muted-foreground'>Total</p>
+ 489:                 <p className='text-sm font-semibold'>{items.length}</p>
+ 490:               </div>
+ 491:               <div className='rounded-md border bg-background/60 px-3 py-2'>
+ 492:                 <p className='text-muted-foreground'>Items</p>
+ 493:                 <p className='text-sm font-semibold'>{items.filter((item) => item.type === 'item').length}</p>
+ 494:               </div>
+ 495:               <div className='rounded-md border bg-background/60 px-3 py-2'>
+ 496:                 <p className='text-muted-foreground'>Equipment</p>
+ 497:                 <p className='text-sm font-semibold'>{items.filter((item) => item.type === 'equipment').length}</p>
+ 498:               </div>
+ 499:               <div className='rounded-md border bg-background/60 px-3 py-2'>
+ 500:                 <p className='text-muted-foreground'>Categories</p>
+ 501:                 <p className='text-sm font-semibold'>{categoryCounts.size}</p>
+ 502:               </div>
+ 503:             </div>
+ 504:           </div>
+ 505: 
+ 506:           <div className='grid gap-2 sm:grid-cols-[minmax(0,1fr),220px,auto]'>
+ 507:             <div className='relative'>
+ 508:               <Search className='pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground' />
+ 509:               <Input
+ 510:                 value={search}
+ 511:                 onChange={(event) => setSearch(event.target.value)}
+ 512:                 placeholder='Search by name, ID, devname, description...'
+ 513:                 className='h-9 pl-9 pr-9'
+ 514:               />
+ 515:               {search && (
+ 516:                 <button
+ 517:                   type='button'
+ 518:                   onClick={() => setSearch('')}
+ 519:                   className='absolute right-2 top-2 rounded-sm p-1 text-muted-foreground transition hover:bg-accent hover:text-foreground'
+ 520:                   aria-label='Clear search'
+ 521:                 >
+ 522:                   <X className='h-3.5 w-3.5' />
+ 523:                 </button>
+ 524:               )}
+ 525:             </div>
+ 526: 
+ 527:             <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortKey)}>
+ 528:               <SelectTrigger className='h-9'>
+ 529:                 <ArrowUpDown className='mr-2 h-4 w-4' />
+ 530:                 <SelectValue placeholder='Sort by' />
+ 531:               </SelectTrigger>
+ 532:               <SelectContent>
+ 533:                 {SORT_OPTIONS.map((option) => (
+ 534:                   <SelectItem key={option.value} value={option.value}>
+ 535:                     {option.label}
+ 536:                   </SelectItem>
+ 537:                 ))}
+ 538:               </SelectContent>
+ 539:             </Select>
+ 540: 
+ 541:             <div className='flex gap-2'>
+ 542:               <div className='hidden rounded-md border bg-card/70 p-1 sm:flex'>
+ 543:                 <Button
+ 544:                   type='button'
+ 545:                   size='sm'
+ 546:                   variant={viewMode === 'grid' ? 'default' : 'ghost'}
+ 547:                   className='h-7 px-2'
+ 548:                   onClick={() => setViewMode('grid')}
+ 549:                 >
+ 550:                   <Grid3x3 className='h-4 w-4' />
+ 551:                 </Button>
+ 552:                 <Button
+ 553:                   type='button'
+ 554:                   size='sm'
+ 555:                   variant={viewMode === 'list' ? 'default' : 'ghost'}
+ 556:                   className='h-7 px-2'
+ 557:                   onClick={() => setViewMode('list')}
+ 558:                 >
+ 559:                   <List className='h-4 w-4' />
+ 560:                 </Button>
+ 561:               </div>
+ 562:               <Button
+ 563:                 type='button'
+ 564:                 variant='outline'
+ 565:                 className='h-9 gap-2 lg:hidden'
+ 566:                 onClick={() => setMobileFilterOpen(true)}
+ 567:               >
+ 568:                 <SlidersHorizontal className='h-4 w-4' />
+ 569:                 Filters
+ 570:                 {activeFilterCount > 0 && (
+ 571:                   <Badge variant='secondary' className='ml-1 h-5 min-w-5 justify-center px-1.5 text-[10px]'>
+ 572:                     {activeFilterCount}
+ 573:                   </Badge>
+ 574:                 )}
+ 575:               </Button>
+ 576:             </div>
+ 577:           </div>
+ 578:         </CardContent>
+ 579:       </Card>
+ 580: 
+ 581:       <div className='grid gap-4 lg:grid-cols-[290px,minmax(0,1fr)]'>
+ 582:         <Card className='hidden border-border/70 bg-card/80 lg:sticky lg:top-20 lg:block lg:h-[calc(100vh-7rem)]'>
+ 583:           <CardHeader className='pb-3'>
+ 584:             <CardTitle className='flex items-center justify-between text-sm'>
+ 585:               <span>Filters</span>
+ 586:               {activeFilterCount > 0 && <Badge variant='secondary'>{activeFilterCount} active</Badge>}
+ 587:             </CardTitle>
+ 588:           </CardHeader>
+ 589:           <CardContent className='h-[calc(100%-4rem)] pr-2'>
+ 590:             <ScrollArea className='h-full pr-4'>
+ 591:               <FilterPanel />
+ 592:             </ScrollArea>
+ 593:           </CardContent>
+ 594:         </Card>
+ 595: 
+ 596:         <Card className='border-border/70 bg-card/80'>
+ 597:           <CardContent className='space-y-4 p-3 sm:p-4'>
+ 598:             <div className='flex flex-wrap items-center justify-between gap-2'>
+ 599:               <p className='text-sm text-muted-foreground'>{resultRangeLabel}</p>
+ 600:               {activeFilterCount > 0 && (
+ 601:                 <div className='flex flex-wrap gap-2'>
+ 602:                   {typeFilter !== 'all' && (
+ 603:                     <button
+ 604:                       type='button'
+ 605:                       onClick={() => setTypeFilter('all')}
+ 606:                       className='inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground'
+ 607:                     >
+ 608:                       Type: {typeFilter}
+ 609:                       <X className='h-3 w-3' />
+ 610:                     </button>
+ 611:                   )}
+ 612:                   {onlyWithArtwork && (
+ 613:                     <button
+ 614:                       type='button'
+ 615:                       onClick={() => setOnlyWithArtwork(false)}
+ 616:                       className='inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground'
+ 617:                     >
+ 618:                       Artwork only
+ 619:                       <X className='h-3 w-3' />
+ 620:                     </button>
+ 621:                   )}
+ 622:                   {selectedRarities.map((rarity) => (
+ 623:                     <button
+ 624:                       key={`rarity-${rarity}`}
+ 625:                       type='button'
+ 626:                       onClick={() => toggleRarity(rarity)}
+ 627:                       className='inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground'
+ 628:                     >
+ 629:                       <span>R{rarity}</span>
+ 630:                       <X className='h-3 w-3' />
+ 631:                     </button>
+ 632:                   ))}
+ 633:                   {selectedCategories.map((category) => (
+ 634:                     <button
+ 635:                       key={category}
+ 636:                       type='button'
+ 637:                       onClick={() => toggleCategory(category)}
+ 638:                       className='inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground'
+ 639:                     >
+ 640:                       <span className='max-w-28 truncate'>{category}</span>
+ 641:                       <X className='h-3 w-3' />
+ 642:                     </button>
+ 643:                   ))}
+ 644:                 </div>
+ 645:               )}
+ 646:             </div>
+ 647: 
+ 648:             {paginatedItems.length === 0 ? (
+ 649:               <div className='rounded-lg border border-dashed p-12 text-center'>
+ 650:                 <p className='text-sm text-muted-foreground'>No results match your current filters.</p>
+ 651:                 <Button type='button' variant='outline' className='mt-4' onClick={clearAllFilters}>
+ 652:                   Reset Filters
+ 653:                 </Button>
+ 654:               </div>
+ 655:             ) : viewMode === 'grid' ? (
+ 656:               <div className='grid grid-cols-[repeat(auto-fill,minmax(108px,1fr))] gap-2 sm:grid-cols-[repeat(auto-fill,minmax(118px,1fr))] sm:gap-3'>
+ 657:                 {paginatedItems.map((item) => (
+ 658:                   <button
+ 659:                     key={`${item.type}-${item.id}`}
+ 660:                     type='button'
+ 661:                     onClick={() => setSelectedItem(item)}
+ 662:                     className='group rounded-lg border border-border/70 bg-background/40 p-2 text-left transition hover:border-primary/50 hover:bg-accent/30'
+ 663:                     title={`${item.name}\nID ${item.id}`}
+ 664:                   >
+ 665:                     <div className='mb-2 aspect-square overflow-hidden rounded-md border border-border/60 bg-background'>
+ 666:                       <ItemArtwork item={item} iconClassName='transition-transform duration-200 group-hover:scale-[1.04]' />
+ 667:                     </div>
+ 668:                     <div
+ 669:                       className='min-h-8 text-[11px] font-medium leading-tight text-foreground'
+ 670:                       style={{
+ 671:                         display: '-webkit-box',
+ 672:                         WebkitLineClamp: 2,
+ 673:                         WebkitBoxOrient: 'vertical',
+ 674:                         overflow: 'hidden',
+ 675:                       }}
+ 676:                     >
+ 677:                       {item.name}
+ 678:                     </div>
+ 679:                     <div className='mt-1 flex items-center justify-between gap-1'>
+ 680:                       <Badge variant='outline' className='max-w-[70%] truncate px-1.5 py-0 text-[10px]'>
+ 681:                         {item.category}
+ 682:                       </Badge>
+ 683:                       <span className='text-[10px] text-muted-foreground'>#{item.id}</span>
+ 684:                     </div>
+ 685:                   </button>
+ 686:                 ))}
+ 687:               </div>
+ 688:             ) : (
+ 689:               <div className='space-y-2'>
+ 690:                 {paginatedItems.map((item) => (
+ 691:                   <button
+ 692:                     key={`${item.type}-${item.id}`}
+ 693:                     type='button'
+ 694:                     onClick={() => setSelectedItem(item)}
+ 695:                     className='grid w-full grid-cols-[64px,minmax(0,1fr),auto] items-center gap-3 rounded-lg border border-border/70 bg-background/40 p-2 text-left transition hover:border-primary/50 hover:bg-accent/30'
+ 696:                   >
+ 697:                     <div className='aspect-square overflow-hidden rounded-md border border-border/60 bg-background'>
+ 698:                       <ItemArtwork item={item} />
+ 699:                     </div>
+ 700:                     <div className='min-w-0'>
+ 701:                       <p className='truncate text-sm font-semibold'>{item.name}</p>
+ 702:                       <p className='truncate text-xs text-muted-foreground'>{item.devname || 'Unknown devname'}</p>
+ 703:                       <p className='mt-1 line-clamp-1 text-xs text-muted-foreground'>
+ 704:                         {item.description || item.flavorText || 'No description available.'}
+ 705:                       </p>
+ 706:                     </div>
+ 707:                     <div className='flex flex-col items-end gap-1 text-xs'>
+ 708:                       <Badge variant='outline'>{item.category}</Badge>
+ 709:                       <Badge variant='secondary' className='uppercase'>
+ 710:                         {item.type}
+ 711:                       </Badge>
+ 712:                       <span className='font-mono text-muted-foreground'>#{item.id}</span>
+ 713:                     </div>
+ 714:                   </button>
+ 715:                 ))}
+ 716:               </div>
+ 717:             )}
+ 718: 
+ 719:             {totalPages > 1 && (
+ 720:               <div className='flex flex-wrap items-center justify-center gap-1 border-t pt-3'>
+ 721:                 <Button
+ 722:                   variant='outline'
+ 723:                   size='sm'
+ 724:                   className='h-8 px-3'
+ 725:                   disabled={safePage <= 1}
+ 726:                   onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+ 727:                 >
+ 728:                   Previous
+ 729:                 </Button>
+ 730:                 {paginationSlots.map((slot) =>
+ 731:                   typeof slot === 'number' ? (
+ 732:                     <Button
+ 733:                       key={slot}
+ 734:                       variant={slot === safePage ? 'default' : 'outline'}
+ 735:                       size='sm'
+ 736:                       className='h-8 min-w-8 px-2'
+ 737:                       onClick={() => setCurrentPage(slot)}
+ 738:                     >
+ 739:                       {slot}
+ 740:                     </Button>
+ 741:                   ) : (
+ 742:                     <span key={slot} className='px-1 text-xs text-muted-foreground'>
+ 743:                       ...
+ 744:                     </span>
+ 745:                   )
+ 746:                 )}
+ 747:                 <Button
+ 748:                   variant='outline'
+ 749:                   size='sm'
+ 750:                   className='h-8 px-3'
+ 751:                   disabled={safePage >= totalPages}
+ 752:                   onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+ 753:                 >
+ 754:                   Next
+ 755:                 </Button>
+ 756:               </div>
+ 757:             )}
+ 758:           </CardContent>
+ 759:         </Card>
+ 760:       </div>
+ 761: 
+ 762:       <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
+ 763:         <SheetContent side='left' className='w-[92vw] max-w-[380px] p-0 sm:w-[420px] sm:max-w-[420px]'>
+ 764:           <SheetHeader className='border-b px-4 py-4'>
+ 765:             <SheetTitle className='text-left text-base'>Item Filters</SheetTitle>
+ 766:           </SheetHeader>
+ 767:           <div className='h-[calc(100%-4rem)] px-4 py-4'>
+ 768:             <ScrollArea className='h-full pr-3'>
+ 769:               <FilterPanel mobile={true} />
+ 770:               <Button type='button' className='mt-4 w-full' onClick={() => setMobileFilterOpen(false)}>
+ 771:                 Apply Filters
+ 772:               </Button>
+ 773:             </ScrollArea>
+ 774:           </div>
+ 775:         </SheetContent>
+ 776:       </Sheet>
+ 777: 
+ 778:       <Dialog open={selectedItem !== null} onOpenChange={(open) => !open && setSelectedItem(null)}>
+ 779:         <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-2xl'>
+ 780:           {selectedItem && (
+ 781:             <>
+ 782:               <DialogHeader>
+ 783:                 <DialogTitle className='pr-8 text-xl'>{selectedItem.name}</DialogTitle>
+ 784:                 <DialogDescription>ID {selectedItem.id}</DialogDescription>
+ 785:               </DialogHeader>
+ 786:               <div className='grid gap-4 sm:grid-cols-[220px,minmax(0,1fr)]'>
+ 787:                 <div className='space-y-3'>
+ 788:                   <div className='aspect-square overflow-hidden rounded-lg border bg-muted/20 p-2'>
+ 789:                     <ItemArtwork item={selectedItem} iconClassName='h-full w-full object-contain [image-rendering:pixelated]' />
+ 790:                   </div>
+ 791:                   <div className='flex flex-wrap items-center gap-2'>
+ 792:                     <Badge variant='outline' className='uppercase'>
+ 793:                       {selectedItem.type}
+ 794:                     </Badge>
+ 795:                     <Badge variant='secondary'>{selectedItem.category}</Badge>
+ 796:                   </div>
+ 797:                   <RarityIcon rarity={selectedItem.rarity} />
+ 798:                 </div>
+ 799: 
+ 800:                 <div className='space-y-3'>
+ 801:                   <div>
+ 802:                     <p className='text-xs uppercase tracking-wide text-muted-foreground'>Devname</p>
+ 803:                     <p className='break-all text-sm'>{selectedItem.devname || 'Unknown'}</p>
+ 804:                   </div>
+ 805:                   <div>
+ 806:                     <p className='text-xs uppercase tracking-wide text-muted-foreground'>Description</p>
+ 807:                     <p className='whitespace-pre-wrap text-sm leading-relaxed text-foreground/90'>
+ 808:                       {selectedItem.description || 'No description available.'}
+ 809:                     </p>
+ 810:                   </div>
+ 811:                   {selectedItem.flavorText && (
+ 812:                     <div>
+ 813:                       <p className='text-xs uppercase tracking-wide text-muted-foreground'>Flavor Text</p>
+ 814:                       <p className='whitespace-pre-wrap text-sm italic text-muted-foreground'>{selectedItem.flavorText}</p>
+ 815:                     </div>
+ 816:                   )}
+ 817:                   <div className='grid gap-3 rounded-md border bg-muted/20 p-3 text-xs sm:grid-cols-2'>
+ 818:                     <div>
+ 819:                       <p className='text-muted-foreground'>Icon Path</p>
+ 820:                       <p className='break-all font-mono'>{selectedItem.icon || '(none)'}</p>
+ 821:                     </div>
+ 822:                     <div>
+ 823:                       <p className='text-muted-foreground'>Thumbnail Path</p>
+ 824:                       <p className='break-all font-mono'>{selectedItem.thumbnail || '(none)'}</p>
+ 825:                     </div>
+ 826:                   </div>
+ 827:                 </div>
+ 828:               </div>
+ 829:             </>
+ 830:           )}
+ 831:         </DialogContent>
+ 832:       </Dialog>
+ 833:     </div>
+ 834:   );
+ 835: }
