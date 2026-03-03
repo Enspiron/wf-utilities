@@ -287,9 +287,9 @@ const RAW_SECTION_JUMPS: RawSectionJump[] = [
   { key: 'quest_progress', label: 'Quest Progress', patterns: ['"quest_progress"'] },
 ];
 
-const CHARACTER_PAGE_SIZE = 120;
-const ITEM_PAGE_SIZE = 80;
-const EQUIPMENT_PAGE_SIZE = 60;
+const CHARACTER_PAGE_SIZE = 500;
+const ITEM_PAGE_SIZE = 240;
+const EQUIPMENT_PAGE_SIZE = 240;
 const PARTY_PAGE_SIZE = 24;
 const PARTY_PICKER_SEARCH_DEBOUNCE_MS = 90;
 const PARTY_PICKER_INITIAL_RENDER_COUNT = 180;
@@ -5167,7 +5167,7 @@ export default function SaveEditorPage() {
                 </Select>
               </div>
 
-              <div className='grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12'>
+              <div className='grid grid-cols-[repeat(auto-fill,minmax(58px,1fr))] gap-1'>
                 {visibleCharacters.map((id) => {
                   const owned = ownedCharacterIds.has(id);
                   const meta = characterMetaById[id];
@@ -5189,14 +5189,14 @@ export default function SaveEditorPage() {
                       type='button'
                       onClick={() => openCharacterEditor(id)}
                       onContextMenu={(event) => openCharacterContextMenu(event, id)}
-                      className={`group flex flex-col items-center rounded-md border p-1 text-center transition ${
+                      className={`group flex flex-col items-center rounded-md border p-0.5 text-center transition ${
                         owned ? ownedClass : 'border-border/50 bg-muted/20 opacity-45 grayscale hover:opacity-80 hover:grayscale-0'
                       }`}
                       disabled={!saveDocument}
                       title={`ID ${id}`}
                     >
-                      <AssetThumb urls={thumbUrls} alt={displayName} size={68} pixelated={false} />
-                      <p className='mt-1 w-full truncate text-[10px] text-muted-foreground'>{displayName}</p>
+                      <AssetThumb urls={thumbUrls} alt={displayName} size={52} pixelated={false} />
+                      <p className='mt-0.5 w-full truncate text-[9px] text-muted-foreground'>{displayName}</p>
                     </button>
                   );
                 })}
