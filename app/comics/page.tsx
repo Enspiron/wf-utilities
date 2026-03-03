@@ -151,6 +151,7 @@ export async function generateMetadata({ searchParams }: ComicsPageProps): Promi
   if (!requestedEpisode) {
     const title = `Comics Browser (${source.displayName}) - World Flipper Tools`;
     const imageUrl = `${CDN_ROOT}/comics/${source.folder}/1/small.png`;
+    const baseImageUrl = `${CDN_ROOT}/comics/${source.folder}/1/base.png`;
     const canonicalPath = lang === 'en' ? '/comics' : `/comics?lang=${lang}`;
     const canonicalUrl = new URL(canonicalPath, siteBase).toString();
 
@@ -164,13 +165,13 @@ export async function generateMetadata({ searchParams }: ComicsPageProps): Promi
         description: DEFAULT_DESCRIPTION,
         url: canonicalUrl,
         siteName: 'World Flipper Tools',
-        images: [{ url: imageUrl, alt: title }],
+        images: [{ url: imageUrl, alt: title }, { url: baseImageUrl, alt: title }],
       },
       twitter: {
         card: 'summary_large_image',
         title,
         description: DEFAULT_DESCRIPTION,
-        images: [imageUrl],
+        images: [imageUrl, baseImageUrl],
       },
     };
   }
