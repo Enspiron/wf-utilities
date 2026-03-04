@@ -35,7 +35,16 @@ type TemplateKind = 'fresh' | 'mostly_complete';
 type EditorTab = 'general' | 'characters' | 'items' | 'equipment' | 'party' | 'story' | 'raw';
 type FieldKind = 'string' | 'number';
 type CharacterMeta = { id: string; faceCode: string; group: string; nameEN: string; nameJP: string; rarity: number };
-type ItemMeta = { id: string; devName: string; name: string; icon: string; thumbnail: string; type: 'item' | 'equipment' };
+type EquipmentRegion = 'gl' | 'ja';
+type ItemMeta = {
+  id: string;
+  devName: string;
+  name: string;
+  icon: string;
+  thumbnail: string;
+  type: 'item' | 'equipment';
+  sheetRegions: EquipmentRegion[];
+};
 type ManaBoardMeta = { board1Nodes: number; board2Nodes: number; hasBoard2: boolean };
 type ManaBoardGroupRequirementMeta = {
   rawLevelEntries: string[];
@@ -1612,6 +1621,11 @@ export default function SaveEditorPage() {
             if (!id) continue;
             const typeRaw = getStringValue(rawItem.type);
             const type: 'item' | 'equipment' = typeRaw === 'equipment' ? 'equipment' : 'item';
+            const sheetRegions = Array.isArray(rawItem.sheetRegions)
+              ? rawItem.sheetRegions
+                  .map((entry) => getStringValue(entry))
+                  .filter((entry): entry is EquipmentRegion => entry === 'gl' || entry === 'ja')
+              : [];
             nextItems[id] = {
               id,
               devName: getStringValue(rawItem.devname ?? rawItem.devName),
@@ -1619,6 +1633,7 @@ export default function SaveEditorPage() {
               icon: getStringValue(rawItem.icon),
               thumbnail: getStringValue(rawItem.thumbnail),
               type,
+              sheetRegions,
             };
           }
           setItemMetaById(nextItems);
@@ -2622,7 +2637,10 @@ export default function SaveEditorPage() {
     const idSet = new Set<string>();
     for (const [id] of equipmentEntries) idSet.add(id);
     for (const [id, meta] of Object.entries(itemMetaById)) {
-      if (meta.type === 'equipment') idSet.add(id);
+      if (meta.type !== 'equipment') continue;
+      // Save editor is EN-only: do not include JP-exclusive equipment in addable catalog IDs.
+      if (meta.sheetRegions.length > 0 && !meta.sheetRegions.includes('gl')) continue;
+      idSet.add(id);
     }
     return Array.from(idSet).sort((a, b) => {
       const numericDiff = getNumberValue(a, 0) - getNumberValue(b, 0);
@@ -4179,9 +4197,18 @@ export default function SaveEditorPage() {
     });
   };
 
-  const addEquipmentById = (equipmentId: string) => {
+  const addEquipmentById = (equipmentId: string): boolean => {
     const id = equipmentId.trim();
-    if (!id) return;
+    if (!id) return false;
+    const equipmentMeta = itemMetaById[id];
+    if (
+      equipmentMeta?.type === 'equipment' &&
+      equipmentMeta.sheetRegions.length > 0 &&
+      !equipmentMeta.sheetRegions.includes('gl')
+    ) {
+      setNotice({ type: 'error', message: `Equipment ${id} is JP-only and cannot be added to EN saves.` });
+      return false;
+    }
     applySaveMutation((draft) => {
       const data = getOrCreateObject(draft, 'data');
       const equipmentList = getOrCreateObject(data, 'user_equipment_list');
@@ -4194,12 +4221,14 @@ export default function SaveEditorPage() {
         };
       }
     });
+    return true;
   };
 
   const addEquipment = () => {
     const id = newEquipmentId.trim();
     if (!id) return;
-    addEquipmentById(id);
+    const added = addEquipmentById(id);
+    if (!added) return;
     setNewEquipmentId('');
     setNotice({ type: 'success', message: `Equipment ${id} added.` });
   };
@@ -6641,8 +6670,10 @@ export default function SaveEditorPage() {
                       type='button'
                       className='w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent'
                       onClick={() => {
-                        addEquipmentById(equipmentContextMenuEntry.id);
-                        setNotice({ type: 'success', message: `Equipment ${equipmentContextMenuEntry.id} added.` });
+                        const added = addEquipmentById(equipmentContextMenuEntry.id);
+                        if (added) {
+                          setNotice({ type: 'success', message: `Equipment ${equipmentContextMenuEntry.id} added.` });
+                        }
                         closeEquipmentContextMenu();
                       }}
                       disabled={!saveDocument}
@@ -6905,8 +6936,10 @@ export default function SaveEditorPage() {
                               <Button
                                 size='sm'
                                 onClick={() => {
-                                  addEquipmentById(selectedEquipmentId);
-                                  setNotice({ type: 'success', message: `Equipment ${selectedEquipmentId} added.` });
+                                  const added = addEquipmentById(selectedEquipmentId);
+                                  if (added) {
+                                    setNotice({ type: 'success', message: `Equipment ${selectedEquipmentId} added.` });
+                                  }
                                 }}
                                 disabled={!saveDocument}
                               >

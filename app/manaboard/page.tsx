@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
@@ -96,6 +96,34 @@ const nodeTypeClass = (type: number) =>
     : type === 1
       ? 'bg-sky-500/10 text-sky-300 border-sky-500/30'
       : 'bg-muted text-muted-foreground border-border';
+
+type SafeImageProps = Omit<ComponentProps<typeof Image>, 'src' | 'alt'> & {
+  src: string;
+  alt: string;
+  fallback: ReactNode;
+};
+
+function SafeImage({ src, alt, fallback, onError, ...props }: SafeImageProps) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (!src || failed) return <>{fallback}</>;
+
+  return (
+    <Image
+      {...props}
+      src={src}
+      alt={alt}
+      onError={(event) => {
+        setFailed(true);
+        onError?.(event);
+      }}
+    />
+  );
+}
 
 function splitLabeledText(input: string | null): { title: string | null; body: string | null } {
   if (!input) return { title: null, body: null };
@@ -424,7 +452,7 @@ function ManaBoardPageClient() {
                           >
                             <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-border/60 bg-muted/40">
                               {c.faceCode ? (
-                                <Image
+                                <SafeImage
                                   src={`${CDN_ROOT}/wfjukebox/character/character_art/${c.faceCode}/ui/square_0.png`}
                                   alt={c.nameEn}
                                   width={40}
@@ -432,6 +460,7 @@ function ManaBoardPageClient() {
                                   className="h-full w-full object-cover"
                                   loading="lazy"
                                   unoptimized
+                                  fallback={<div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">No Img</div>}
                                 />
                               ) : (
                                 <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">No Img</div>
@@ -548,7 +577,7 @@ function ManaBoardPageClient() {
                             <div key={m.itemId} className="flex items-center justify-between rounded-md border border-border/70 bg-background/40 px-2 py-1.5">
                               <div className="flex min-w-0 items-center gap-2">
                                 {m.iconPath && (
-                                  <Image
+                                  <SafeImage
                                     src={`${CDN_ROOT}/${m.iconPath.replace(/^\/+/, '')}${/\.[a-z0-9]{2,5}$/i.test(m.iconPath) ? '' : '.png'}`}
                                     alt={m.name}
                                     width={20}
@@ -556,6 +585,7 @@ function ManaBoardPageClient() {
                                     className="h-5 w-5 shrink-0 rounded-sm object-contain"
                                     loading="lazy"
                                     unoptimized
+                                    fallback={<div className="h-5 w-5 shrink-0 rounded-sm border border-dashed border-border/70 bg-muted/20" />}
                                   />
                                 )}
                                 <div className="min-w-0"><p className="truncate text-xs font-medium">{m.name}</p><p className="truncate text-[10px] text-muted-foreground">Item {m.itemId}</p></div>

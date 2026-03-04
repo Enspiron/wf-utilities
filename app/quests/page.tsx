@@ -257,6 +257,11 @@ function QuestImageGallery({ item }: { item: ParsedItem }) {
   const candidates = useMemo(() => getImageCandidates(item), [item]);
   const [failedUrls, setFailedUrls] = useState<Set<string>>(new Set());
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
+
+  useEffect(() => {
+    setPreviewFailed(false);
+  }, [previewUrl]);
 
   const visibleCandidates = candidates.filter((url) => !failedUrls.has(url));
   if (candidates.length === 0) return null;
@@ -319,14 +324,22 @@ function QuestImageGallery({ item }: { item: ParsedItem }) {
                 Full-size preview of the selected quest event image candidate.
               </DialogDescription>
               <div className="flex max-h-[80vh] items-center justify-center overflow-hidden rounded-md border bg-muted/20 p-2">
-                <Image
-                  src={previewUrl}
-                  alt="Quest image preview"
-                  width={1400}
-                  height={1000}
-                  unoptimized={true}
-                  className="h-auto max-h-[76vh] w-auto max-w-full object-contain"
-                />
+                {previewFailed ? (
+                  <div className="flex h-[240px] w-full flex-col items-center justify-center rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 text-muted-foreground">
+                    <ImageOff className="h-6 w-6" />
+                    <span className="mt-2 text-xs">Preview failed to load</span>
+                  </div>
+                ) : (
+                  <Image
+                    src={previewUrl}
+                    alt="Quest image preview"
+                    width={1400}
+                    height={1000}
+                    unoptimized={true}
+                    className="h-auto max-h-[76vh] w-auto max-w-full object-contain"
+                    onError={() => setPreviewFailed(true)}
+                  />
+                )}
               </div>
               <p className="mt-2 break-all text-xs text-muted-foreground">{previewUrl}</p>
             </>

@@ -76,6 +76,33 @@ const getRarityIcon = (rarity: string) => {
   return `/FilterIcons/rarity/rarity_${rarityWord}.png`;
 };
 
+const toCharacterImageUrl = (faceCode: string) =>
+  `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${faceCode}/ui/square_0.png`;
+
+function CharacterPortrait({ src, name }: { src: string; name: string }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (failed) {
+    return <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">No Img</div>;
+  }
+
+  return (
+    <Image
+      src={src}
+      alt={name}
+      fill
+      className="object-contain [image-rendering:auto]"
+      loading="lazy"
+      unoptimized
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 export default function CharactersPage() {
   const router = useRouter();
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -264,7 +291,7 @@ export default function CharactersPage() {
   }, [language]);
 
   const getCharacterImage = useCallback((faceCode: string) => {
-    return `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${faceCode}/ui/square_0.png`;
+    return toCharacterImageUrl(faceCode);
   }, []);
 
   const clearFilter = (key: keyof CharacterFilters) => {
@@ -862,13 +889,9 @@ export default function CharactersPage() {
                           >
                             <CardContent className="p-0.5 flex flex-col items-center">
                               <div className="w-full aspect-square relative bg-muted rounded-sm overflow-hidden mb-0.5">
-                                <Image
+                                <CharacterPortrait
                                   src={getCharacterImage(char.faceCode)}
-                                  alt={getCharacterName(char)}
-                                  fill
-                                  className="object-contain [image-rendering:auto]"
-                                  loading="lazy"
-                                  unoptimized
+                                  name={getCharacterName(char)}
                                 />
                                 {/* Attribute icon overlay */}
                                 <div className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-sm overflow-hidden bg-background/80 backdrop-blur-sm shadow">
@@ -939,13 +962,9 @@ export default function CharactersPage() {
                     >
                       <div className="flex gap-4 p-4">
                         <div className="w-20 h-20 shrink-0 relative bg-muted rounded-md overflow-hidden">
-                          <Image
+                          <CharacterPortrait
                             src={getCharacterImage(char.faceCode)}
-                            alt={getCharacterName(char)}
-                            fill
-                            className="object-contain [image-rendering:auto]"
-                            loading="lazy"
-                            unoptimized
+                            name={getCharacterName(char)}
                           />
                         </div>
                         <div className="flex-1 min-w-0">
