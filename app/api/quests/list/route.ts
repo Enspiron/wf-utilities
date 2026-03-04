@@ -3,20 +3,57 @@ import { NextResponse } from 'next/server';
 const IS_PRODUCTION = process.env.VERCEL === '1';
 const GITHUB_RAW_URL = 'https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data';
 
+const toStringArray = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
+  }
+  if (typeof value === 'string' && value.length > 0) return [value];
+  return [];
+};
+
+const extractQuestFilesFromManifest = (manifest: unknown): string[] => {
+  if (!manifest || typeof manifest !== 'object') return [];
+  const filesByCategory = (manifest as Record<string, unknown>).filesByCategory;
+  if (!filesByCategory || typeof filesByCategory !== 'object') return [];
+  const questEntry = (filesByCategory as Record<string, unknown>).quest;
+  return toStringArray(questEntry);
+};
+
+const fetchQuestFilesFromGithubManifest = async (lang: string): Promise<string[]> => {
+  const manifestUrls = [
+    `${GITHUB_RAW_URL}/manifest_${lang}.json`,
+    `${GITHUB_RAW_URL}/manifest.json`,
+  ];
+
+  for (const manifestUrl of manifestUrls) {
+    try {
+      const resp = await fetch(manifestUrl, { next: { revalidate: 3600 } });
+      if (!resp.ok) continue;
+      const manifest = await resp.json();
+      const files = extractQuestFilesFromManifest(manifest);
+      if (files.length > 0) return files;
+    } catch {
+      // Try next source.
+    }
+  }
+
+  return [];
+};
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const lang = searchParams.get('lang') || 'en';
 
     if (IS_PRODUCTION) {
-      // In production, attempt to fetch a manifest from GitHub
-      const manifestUrl = `${GITHUB_RAW_URL}/manifest_${lang}.json`;
-      const resp = await fetch(manifestUrl);
-      if (!resp.ok) return NextResponse.json({ error: 'Manifest not found' }, { status: 404 });
-      await resp.json();
-      // manifest contains listing information — try to extract quest files
-      // Fallback: return empty
-      return NextResponse.json({ files: [] });
+      const files = await fetchQuestFilesFromGithubManifest(lang);
+      if (files.length === 0) {
+        return NextResponse.json(
+          { error: 'Quest manifest not found or did not contain quest files' },
+          { status: 404 }
+        );
+      }
+      return NextResponse.json({ files });
     }
 
     const fs = await import('fs');
@@ -39,7 +76,6 @@ export async function GET(request: Request) {
         if (entry.isDirectory()) {
           walk(resPath, relPath);
         } else if (entry.isFile() && entry.name.endsWith('.json')) {
-          // store without .json
           files.push(relPath.replace(/\.json$/, ''));
         }
       }
@@ -53,4 +89,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Failed to list quest files' }, { status: 500 });
   }
 }
-
