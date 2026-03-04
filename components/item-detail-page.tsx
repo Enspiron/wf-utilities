@@ -4,7 +4,6 @@ import { ArrowLeft, ExternalLink, Link2, Package, Sparkles, Wrench } from 'lucid
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import GoBackButton from '@/components/go-back-button';
 import ItemSaveLinkEditor from '@/components/item-save-link-editor';
 import type { ItemDetailData } from '@/lib/item-catalog';
 
@@ -78,7 +77,9 @@ export default function ItemDetailPage({ routeKind, detail }: ItemDetailPageProp
   const iconUrl = detail.imageCandidates[0] || '';
   const isEquipmentRoute = routeKind === 'equipment';
   const equipmentCatalogEntry = detail.equipmentCatalogEntry;
+  const equipmentSheetEntry = detail.equipmentSheetEntry;
   const hasEquipmentMetadata =
+    equipmentSheetEntry !== null ||
     equipmentCatalogEntry !== null ||
     detail.equipmentStats.length > 0 ||
     detail.equipmentAbilityProfile !== null ||
@@ -99,7 +100,6 @@ export default function ItemDetailPage({ routeKind, detail }: ItemDetailPageProp
     <div className='min-h-screen bg-gradient-to-b from-background via-background to-muted/20'>
       <div className='mx-auto w-full max-w-7xl space-y-4 p-4 md:space-y-6 md:p-6'>
         <div className='flex flex-wrap items-center gap-2'>
-          <GoBackButton fallbackHref='/items' />
           <Button asChild variant='outline' size='sm'>
             <Link href='/items'>
               <ArrowLeft className='mr-2 h-4 w-4' />
@@ -241,6 +241,111 @@ export default function ItemDetailPage({ routeKind, detail }: ItemDetailPageProp
                       <p className='mt-1 font-medium'>{formatMaybeNumber(equipmentCatalogEntry.rarity)}</p>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {equipmentSheetEntry && (
+                <div className='rounded-md border border-border/70 bg-muted/20 p-3'>
+                  <p className='text-sm font-semibold'>Spreadsheet Data</p>
+                  <p className='text-xs text-muted-foreground'>Loaded from public Google Sheets weapon data.</p>
+
+                  <div className='mt-2 grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4'>
+                    <div className='rounded-md border border-border/60 bg-card/70 p-2'>
+                      <p className='uppercase tracking-wide text-muted-foreground'>Source</p>
+                      <p className='mt-1 font-medium'>{equipmentSheetEntry.sourceTab || '-'}</p>
+                    </div>
+                    <div className='rounded-md border border-border/60 bg-card/70 p-2'>
+                      <p className='uppercase tracking-wide text-muted-foreground'>EN Name</p>
+                      <p className='mt-1 font-medium'>{equipmentSheetEntry.enName || '-'}</p>
+                    </div>
+                    <div className='rounded-md border border-border/60 bg-card/70 p-2'>
+                      <p className='uppercase tracking-wide text-muted-foreground'>Attribute</p>
+                      <p className='mt-1 font-medium'>{equipmentSheetEntry.attribute || '-'}</p>
+                    </div>
+                    <div className='rounded-md border border-border/60 bg-card/70 p-2'>
+                      <p className='uppercase tracking-wide text-muted-foreground'>Rarity</p>
+                      <p className='mt-1 font-medium'>{equipmentSheetEntry.rarity || '-'}</p>
+                    </div>
+                    <div className='rounded-md border border-border/60 bg-card/70 p-2'>
+                      <p className='uppercase tracking-wide text-muted-foreground'>Max HP</p>
+                      <p className='mt-1 font-medium'>{formatMaybeNumber(equipmentSheetEntry.maxHp)}</p>
+                    </div>
+                    <div className='rounded-md border border-border/60 bg-card/70 p-2'>
+                      <p className='uppercase tracking-wide text-muted-foreground'>Max ATK</p>
+                      <p className='mt-1 font-medium'>{formatMaybeNumber(equipmentSheetEntry.maxAtk)}</p>
+                    </div>
+                    <div className='rounded-md border border-border/60 bg-card/70 p-2 sm:col-span-2'>
+                      <p className='uppercase tracking-wide text-muted-foreground'>Obtain</p>
+                      <p className='mt-1 font-medium'>{equipmentSheetEntry.obtain || '-'}</p>
+                    </div>
+                    {equipmentSheetEntry.boss && (
+                      <div className='rounded-md border border-border/60 bg-card/70 p-2 sm:col-span-2'>
+                        <p className='uppercase tracking-wide text-muted-foreground'>Boss</p>
+                        <p className='mt-1 font-medium'>{equipmentSheetEntry.boss}</p>
+                      </div>
+                    )}
+                    {equipmentSheetEntry.otherCommonNames && (
+                      <div className='rounded-md border border-border/60 bg-card/70 p-2 sm:col-span-2'>
+                        <p className='uppercase tracking-wide text-muted-foreground'>Aliases</p>
+                        <p className='mt-1 font-medium'>{equipmentSheetEntry.otherCommonNames}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className='mt-3 grid gap-3 xl:grid-cols-2'>
+                    <div className='rounded-md border border-border/60 bg-card/70 p-2.5'>
+                      <p className='text-xs uppercase tracking-wide text-muted-foreground'>Weapon Skill</p>
+                      <p className='mt-1 whitespace-pre-wrap text-xs leading-relaxed'>
+                        {equipmentSheetEntry.weaponSkill || '-'}
+                      </p>
+                    </div>
+                    <div className='rounded-md border border-border/60 bg-card/70 p-2.5'>
+                      <p className='text-xs uppercase tracking-wide text-muted-foreground'>Ability Soul</p>
+                      <p className='mt-1 whitespace-pre-wrap text-xs leading-relaxed'>
+                        {equipmentSheetEntry.abilitySoul || '-'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className='mt-3 grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-5'>
+                    <div className='rounded-md border border-border/60 bg-card/70 p-2'>
+                      <p className='uppercase tracking-wide text-muted-foreground'>Enhance Lv1</p>
+                      <p className='mt-1 font-medium'>{equipmentSheetEntry.enhanceLv1 || '-'}</p>
+                    </div>
+                    <div className='rounded-md border border-border/60 bg-card/70 p-2'>
+                      <p className='uppercase tracking-wide text-muted-foreground'>Lv70</p>
+                      <p className='mt-1 font-medium'>{equipmentSheetEntry.enhanceLv70 || '-'}</p>
+                    </div>
+                    <div className='rounded-md border border-border/60 bg-card/70 p-2'>
+                      <p className='uppercase tracking-wide text-muted-foreground'>Lv99</p>
+                      <p className='mt-1 font-medium'>{equipmentSheetEntry.enhanceLv99 || '-'}</p>
+                    </div>
+                    <div className='rounded-md border border-border/60 bg-card/70 p-2'>
+                      <p className='uppercase tracking-wide text-muted-foreground'>Lv100</p>
+                      <p className='mt-1 font-medium'>{equipmentSheetEntry.enhanceLv100 || '-'}</p>
+                    </div>
+                    <div className='rounded-md border border-border/60 bg-card/70 p-2'>
+                      <p className='uppercase tracking-wide text-muted-foreground'>Lv120</p>
+                      <p className='mt-1 font-medium'>{equipmentSheetEntry.enhanceLv120 || '-'}</p>
+                    </div>
+                  </div>
+
+                  {(equipmentSheetEntry.awakenLv3 || equipmentSheetEntry.awakenLv5 || equipmentSheetEntry.notes) && (
+                    <div className='mt-3 grid gap-2 text-xs xl:grid-cols-3'>
+                      <div className='rounded-md border border-border/60 bg-card/70 p-2'>
+                        <p className='uppercase tracking-wide text-muted-foreground'>Awaken Lv3</p>
+                        <p className='mt-1 whitespace-pre-wrap'>{equipmentSheetEntry.awakenLv3 || '-'}</p>
+                      </div>
+                      <div className='rounded-md border border-border/60 bg-card/70 p-2'>
+                        <p className='uppercase tracking-wide text-muted-foreground'>Awaken Lv5</p>
+                        <p className='mt-1 whitespace-pre-wrap'>{equipmentSheetEntry.awakenLv5 || '-'}</p>
+                      </div>
+                      <div className='rounded-md border border-border/60 bg-card/70 p-2'>
+                        <p className='uppercase tracking-wide text-muted-foreground'>Notes</p>
+                        <p className='mt-1 whitespace-pre-wrap'>{equipmentSheetEntry.notes || '-'}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

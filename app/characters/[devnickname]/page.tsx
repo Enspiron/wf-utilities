@@ -242,6 +242,7 @@ export default function CharacterDetailPage() {
   const [selectedArtUrl, setSelectedArtUrl] = useState('');
   const [brokenPixelUrls, setBrokenPixelUrls] = useState<Record<string, boolean>>({});
   const [selectedPixelUrl, setSelectedPixelUrl] = useState('');
+  const [heroIconFailed, setHeroIconFailed] = useState(false);
   const character = detailData?.character ?? null;
 
   useEffect(() => {
@@ -451,6 +452,10 @@ export default function CharacterDetailPage() {
   const heroIconUrl = character?.faceCode
     ? `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${character.faceCode}/ui/square_0.png`
     : '';
+
+  useEffect(() => {
+    setHeroIconFailed(false);
+  }, [heroIconUrl]);
   const skillName = character
     ? language === 'jp'
       ? character.skillNameJP || character.skillNameEN
@@ -564,7 +569,21 @@ export default function CharacterDetailPage() {
 
                 <div className='grid items-start gap-4 md:grid-cols-[112px_minmax(0,1fr)] xl:grid-cols-[112px_minmax(0,1fr)_auto]'>
                   <div className='relative mx-auto h-28 w-28 overflow-hidden rounded-xl border bg-background/50 shadow-sm md:mx-0'>
-                    <Image src={heroIconUrl} alt={`${mainTitle} icon`} fill className='object-cover' unoptimized />
+                    {heroIconUrl && !heroIconFailed ? (
+                      <Image
+                        src={heroIconUrl}
+                        alt={`${mainTitle} icon`}
+                        fill
+                        className='object-cover'
+                        unoptimized
+                        onError={() => setHeroIconFailed(true)}
+                      />
+                    ) : (
+                      <div className='flex h-full w-full flex-col items-center justify-center text-muted-foreground'>
+                        <ImageOff className='h-6 w-6' />
+                        <span className='mt-1 text-[10px]'>No icon</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className='space-y-2'>

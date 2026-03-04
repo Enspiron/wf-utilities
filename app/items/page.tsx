@@ -7,7 +7,6 @@ import {
   ArrowUpDown,
   Grid3x3,
   List,
-  Loader2,
   Package2,
   RefreshCw,
   Search,
@@ -22,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import ItemsPageSkeleton from '@/components/items-page-skeleton';
 import { cn } from '@/lib/utils';
 import type { Item } from '../api/items/route';
 
@@ -49,6 +49,7 @@ const SORT_OPTIONS = [
 type SortKey = (typeof SORT_OPTIONS)[number]['value'];
 type ViewMode = 'grid' | 'list';
 type ItemTypeFilter = 'all' | Item['type'];
+type RegionFilter = 'all' | 'gl' | 'ja';
 
 const hasImageExtension = (value: string) => /\.(png|jpe?g|webp|gif|svg)$/i.test(value);
 
@@ -142,6 +143,7 @@ export default function ItemsPage() {
   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
 
   const [typeFilter, setTypeFilter] = useState<ItemTypeFilter>('all');
+  const [regionFilter, setRegionFilter] = useState<RegionFilter>('all');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedRarities, setSelectedRarities] = useState<number[]>([]);
   const [onlyWithArtwork, setOnlyWithArtwork] = useState(false);
@@ -239,6 +241,22 @@ export default function ItemsPage() {
     return counts;
   }, [typedItems]);
 
+  const regionCounts = useMemo(() => {
+    let gl = 0;
+    let ja = 0;
+
+    for (const item of typedItems) {
+      if (item.type !== 'equipment') continue;
+      const regions = item.sheetRegions || [];
+      const hasGl = regions.includes('gl');
+      const hasJa = regions.includes('ja');
+      if (hasGl) gl += 1;
+      if (hasJa && !hasGl) ja += 1;
+    }
+
+    return { gl, ja };
+  }, [typedItems]);
+
   const filteredItems = useMemo(() => {
     const result = typedItems.filter((item) => {
       if (deferredSearch) {
@@ -250,6 +268,18 @@ export default function ItemsPage() {
 
       if (selectedCategories.length > 0 && !selectedCategories.includes(item.category)) {
         return false;
+      }
+
+      if (regionFilter !== 'all') {
+        if (item.type !== 'equipment') return false;
+        const regions = item.sheetRegions || [];
+        const hasGl = regions.includes('gl');
+        const hasJa = regions.includes('ja');
+        if (regionFilter === 'gl') {
+          if (!hasGl) return false;
+        } else if (regionFilter === 'ja') {
+          if (!(hasJa && !hasGl)) return false;
+        }
       }
 
       if (selectedRarities.length > 0 && !selectedRarities.includes(clampRarity(item.rarity))) {
@@ -295,7 +325,7 @@ export default function ItemsPage() {
     });
 
     return sorted;
-  }, [deferredSearch, onlyWithArtwork, selectedCategories, selectedRarities, sortBy, typedItems]);
+  }, [deferredSearch, onlyWithArtwork, regionFilter, selectedCategories, selectedRarities, sortBy, typedItems]);
 
   const itemsPerPage = viewMode === 'grid' ? GRID_PAGE_SIZE : LIST_PAGE_SIZE;
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
@@ -303,7 +333,7 @@ export default function ItemsPage() {
 
   useLayoutEffect(() => {
     setCurrentPage((prev) => (prev === 1 ? prev : 1));
-  }, [deferredSearch, onlyWithArtwork, selectedCategories, selectedRarities, sortBy, typeFilter, viewMode]);
+  }, [deferredSearch, onlyWithArtwork, regionFilter, selectedCategories, selectedRarities, sortBy, typeFilter, viewMode]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -319,11 +349,12 @@ export default function ItemsPage() {
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (typeFilter !== 'all') count += 1;
+    if (regionFilter !== 'all') count += 1;
     if (selectedCategories.length > 0) count += selectedCategories.length;
     if (selectedRarities.length > 0) count += selectedRarities.length;
     if (onlyWithArtwork) count += 1;
     return count;
-  }, [onlyWithArtwork, selectedCategories.length, selectedRarities.length, typeFilter]);
+  }, [onlyWithArtwork, regionFilter, selectedCategories.length, selectedRarities.length, typeFilter]);
 
   const paginationSlots = useMemo(() => {
     if (totalPages <= 7) {
@@ -351,6 +382,7 @@ export default function ItemsPage() {
 
   const clearAllFilters = () => {
     setTypeFilter('all');
+    setRegionFilter('all');
     setSelectedCategories([]);
     setSelectedRarities([]);
     setOnlyWithArtwork(false);
@@ -385,6 +417,29 @@ export default function ItemsPage() {
               variant={typeFilter === option.key ? 'default' : 'outline'}
               className='h-8 text-xs'
               onClick={() => setTypeFilter(option.key)}
+            >
+              {option.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className='space-y-2 rounded-md border border-border/60 bg-muted/20 p-2.5'>
+        <p className='text-xs font-semibold uppercase tracking-wide text-muted-foreground'>Region (Equipment)</p>
+        <div className='grid grid-cols-3 gap-2'>
+          {[
+            { key: 'all' as const, label: 'All' },
+            { key: 'gl' as const, label: `GL ${regionCounts.gl}` },
+            { key: 'ja' as const, label: `JP Excl ${regionCounts.ja}` },
+          ].map((option) => (
+            <Button
+              key={option.key}
+              type='button'
+              size='sm'
+              variant={regionFilter === option.key ? 'default' : 'outline'}
+              className='h-8 text-xs'
+              onClick={() => setRegionFilter(option.key)}
+              disabled={option.key !== 'all' && (option.key === 'gl' ? regionCounts.gl : regionCounts.ja) === 0}
             >
               {option.label}
             </Button>
@@ -472,14 +527,7 @@ export default function ItemsPage() {
   );
 
   if (loading) {
-    return (
-      <div className='flex min-h-[calc(100vh-4rem)] items-center justify-center'>
-        <div className='inline-flex items-center gap-2 rounded-md border bg-card/70 px-4 py-2 text-sm text-muted-foreground'>
-          <Loader2 className='h-4 w-4 animate-spin' />
-          Loading items...
-        </div>
-      </div>
-    );
+    return <ItemsPageSkeleton />;
   }
 
   if (error) {
@@ -611,6 +659,16 @@ export default function ItemsPage() {
                 className='inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground'
               >
                 Type: {typeFilter}
+                <X className='h-3 w-3' />
+              </button>
+            )}
+            {regionFilter !== 'all' && (
+              <button
+                type='button'
+                onClick={() => setRegionFilter('all')}
+                className='inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground'
+              >
+                Region: {regionFilter === 'ja' ? 'JP Exclusive' : 'GL'}
                 <X className='h-3 w-3' />
               </button>
             )}

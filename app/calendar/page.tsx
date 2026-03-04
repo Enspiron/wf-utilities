@@ -5,6 +5,7 @@ import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
+  ImageOff,
   Languages,
   Loader2,
   Music4,
@@ -661,6 +662,11 @@ function EventImageGallery({ event }: { event: CalendarEvent }) {
 
   const [failedUrls, setFailedUrls] = useState<Set<string>>(new Set());
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
+
+  useEffect(() => {
+    setPreviewFailed(false);
+  }, [previewUrl]);
 
   const visibleImages = imageCandidates.filter((url) => !failedUrls.has(url));
   const failedList = imageCandidates.filter((url) => failedUrls.has(url));
@@ -743,14 +749,22 @@ function EventImageGallery({ event }: { event: CalendarEvent }) {
                 <DialogDescription>Large preview of the selected detected asset image.</DialogDescription>
               </DialogHeader>
               <div className='flex max-h-[80vh] items-center justify-center overflow-hidden rounded-md border bg-muted/20 p-2'>
-                <Image
-                  src={previewUrl}
-                  alt='Asset preview'
-                  width={1400}
-                  height={1000}
-                  unoptimized={true}
-                  className='h-auto max-h-[76vh] w-auto max-w-full object-contain'
-                />
+                {previewFailed ? (
+                  <div className='flex h-[240px] w-full flex-col items-center justify-center rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 text-muted-foreground'>
+                    <ImageOff className='h-6 w-6' />
+                    <span className='mt-2 text-xs'>Preview failed to load</span>
+                  </div>
+                ) : (
+                  <Image
+                    src={previewUrl}
+                    alt='Asset preview'
+                    width={1400}
+                    height={1000}
+                    unoptimized={true}
+                    className='h-auto max-h-[76vh] w-auto max-w-full object-contain'
+                    onError={() => setPreviewFailed(true)}
+                  />
+                )}
               </div>
               <p className='break-all text-xs text-muted-foreground'>{previewUrl}</p>
             </div>

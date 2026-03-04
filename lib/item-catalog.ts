@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export type CatalogEntryType = 'item' | 'equipment';
+export type SheetRegion = 'gl' | 'ja';
 
 export interface ItemCatalogEntry {
   id: string;
@@ -12,6 +13,7 @@ export interface ItemCatalogEntry {
   rarity: number;
   category: string;
   type: CatalogEntryType;
+  sheetRegions?: SheetRegion[];
   flavorText?: string;
   thumbnail?: string;
 }
@@ -20,6 +22,15 @@ type ItemData = string[];
 type DataMap = Record<string, ItemData>;
 type Scalar = string | number | boolean | null;
 type RelationGroup = 'drops' | 'shops' | 'usage' | 'enhancement' | 'references';
+type SpreadsheetTabConfig = {
+  gid: string;
+  sourceTab: string;
+};
+type SpreadsheetSourceConfig = {
+  key: 'default' | 'gl' | 'ja';
+  spreadsheetId: string;
+  label: string;
+};
 
 export interface ItemRelationReference {
   sourcePath: string;
@@ -40,6 +51,7 @@ export interface ItemDetailData {
   equipmentAbilityProfile: EquipmentAbilityProfile | null;
   equipmentAbilities: EquipmentAbilityDetail[];
   equipmentCatalogEntry: EquipmentCatalogEntry | null;
+  equipmentSheetEntry: EquipmentSheetEntry | null;
 }
 
 type RelationSourceConfig = {
@@ -53,6 +65,16 @@ const DATA_FALLBACK_BASE = 'https://raw.githubusercontent.com/Enspiron/wf-utilit
 const CDN_ROOT = 'https://wfjukebox.b-cdn.net';
 const MAX_RELATION_REFERENCES = 64;
 const MAX_MATCHES_PER_ENTRY = 3;
+const EQUIPMENT_SPREADSHEET_SOURCES: SpreadsheetSourceConfig[] = [
+  { key: 'default', spreadsheetId: '1moWhlsmAFkmItRJPrhhi9qCYu8Y93sXGyS1ZBo2L38c', label: 'Default' },
+  { key: 'gl', spreadsheetId: '1zNa_FwDyy-vHzY-bmCbkjjDBFU_-2EKRcHlqRsN6TUg', label: 'GL' },
+  { key: 'ja', spreadsheetId: '1FfHbq_ZJpWh7QhMzltAdzoyCSDtYlXXvb7EnboPsitM', label: 'JA' },
+];
+// `zh-TW` intentionally excluded per project scope.
+const EQUIPMENT_SPREADSHEET_TABS: SpreadsheetTabConfig[] = [
+  { gid: '1106788913', sourceTab: 'Gacha/Story Weapons' },
+  { gid: '287563936', sourceTab: 'Boss/Event Weapons' },
+];
 const EQUIPMENT_DEVNAME_CATEGORY_MAP: Record<string, string> = {
   sword: 'Sword',
   axe: 'Axe',
@@ -96,6 +118,12 @@ const RELATION_SOURCES: RelationSourceConfig[] = [
 
 const jsonCache = new Map<string, Promise<unknown>>();
 let catalogPromise: Promise<ItemCatalogEntry[]> | null = null;
+type EquipmentSheetBundle = {
+  sheetMap: Record<string, EquipmentSheetEntry>;
+  regionMap: Record<string, SheetRegion[]>;
+};
+let equipmentSheetBundlePromise: Promise<EquipmentSheetBundle> | null = null;
+let equipmentRegionMapPromise: Promise<Record<string, SheetRegion[]>> | null = null;
 
 export interface EquipmentStatPoint {
   level: number;
@@ -131,6 +159,30 @@ export interface EquipmentCatalogEntry {
   jpName: string;
 }
 
+export interface EquipmentSheetEntry {
+  sourceTab: string;
+  devNickname: string;
+  enName: string;
+  jpName: string;
+  rarity: string;
+  attribute: string;
+  maxHp: number | null;
+  maxAtk: number | null;
+  weaponSkill: string;
+  abilitySoul: string;
+  awakenLv3: string;
+  awakenLv5: string;
+  enhanceLv1: string;
+  enhanceLv70: string;
+  enhanceLv99: string;
+  enhanceLv100: string;
+  enhanceLv120: string;
+  obtain: string;
+  otherCommonNames: string;
+  notes: string;
+  boss: string;
+}
+
 const truncate = (value: string, max = 140): string => {
   if (value.length <= max) return value;
   return `${value.slice(0, Math.max(0, max - 1)).trim()}...`;
@@ -156,8 +208,21 @@ const parseNumberLike = (value?: string): number | null => {
   if (value === undefined) return null;
   const token = value.trim();
   if (!token || token === '(None)') return null;
-  const parsed = Number.parseInt(token, 10);
+  const normalized = token.replace(/,/g, '');
+  if (!/^-?\d+$/.test(normalized)) return null;
+  const parsed = Number.parseInt(normalized, 10);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeDevNickname = (value: string): string => value.trim().toLowerCase();
+
+const extractEquipDevNickname = (rawValue: unknown): string => {
+  if (typeof rawValue === 'string') return normalizeDevNickname(rawValue);
+  if (Array.isArray(rawValue)) {
+    const first = rawValue[0];
+    if (typeof first === 'string') return normalizeDevNickname(first);
+  }
+  return '';
 };
 
 const inferEquipmentCategoryFromDevname = (devname: string): string => {
@@ -240,9 +305,10 @@ const loadDataMap = async (relativePath: string): Promise<DataMap> => {
 };
 
 const parseItemCatalog = async (): Promise<ItemCatalogEntry[]> => {
-  const [itemsData, equipmentData] = await Promise.all([
+  const [itemsData, equipmentData, equipmentRegionMap] = await Promise.all([
     loadDataMap('datalist_en/item/item.json'),
     loadDataMap('datalist_en/item/equipment.json'),
+    getEquipmentRegionMap().catch(() => ({} as Record<string, SheetRegion[]>)),
   ]);
 
   const entries: ItemCatalogEntry[] = [];
@@ -270,9 +336,10 @@ const parseItemCatalog = async (): Promise<ItemCatalogEntry[]> => {
   }
 
   for (const [id, data] of Object.entries(equipmentData)) {
+    const devname = data[0] || '';
     entries.push({
       id,
-      devname: data[0] || '',
+      devname,
       name: data[1] || 'Unknown',
       description: data[7] || '',
       flavorText: data[5] || '',
@@ -281,6 +348,7 @@ const parseItemCatalog = async (): Promise<ItemCatalogEntry[]> => {
       rarity: parseInteger(data[11]) || 5,
       category: 'Equipment',
       type: 'equipment',
+      sheetRegions: equipmentRegionMap[normalizeDevNickname(devname)] || [],
     });
   }
 
@@ -361,7 +429,7 @@ const getEquipmentCatalogMap = async (): Promise<Record<string, EquipmentCatalog
   for (const rawRow of payload) {
     if (!isRecord(rawRow)) continue;
 
-    const devNickname = String(rawRow.DevNicknames || '').trim();
+    const devNickname = extractEquipDevNickname(rawRow.DevNicknames);
     if (!devNickname) continue;
 
     next[devNickname] = {
@@ -375,6 +443,328 @@ const getEquipmentCatalogMap = async (): Promise<Record<string, EquipmentCatalog
   }
 
   return next;
+};
+
+const toDevNicknameSet = (payload: unknown): Set<string> => {
+  const next = new Set<string>();
+  if (!Array.isArray(payload)) return next;
+
+  for (const rawRow of payload) {
+    if (!isRecord(rawRow)) continue;
+    const devNickname = extractEquipDevNickname(rawRow.DevNicknames);
+    if (!devNickname) continue;
+    next.add(devNickname);
+  }
+
+  return next;
+};
+
+const getEquipmentRegionMapFromCatalogFiles = async (): Promise<Record<string, SheetRegion[]>> => {
+  const [jpPayload, enPayload] = await Promise.all([
+    loadJson('equips.json').catch(() => null),
+    loadJson('equips_en.json').catch(() => null),
+  ]);
+
+  const jpSet = toDevNicknameSet(jpPayload);
+  const enSet = toDevNicknameSet(enPayload);
+  const allDevNames = new Set<string>([...jpSet, ...enSet]);
+  const map: Record<string, SheetRegion[]> = {};
+
+  allDevNames.forEach((devName) => {
+    const regions: SheetRegion[] = [];
+    if (enSet.has(devName)) regions.push('gl');
+    if (jpSet.has(devName)) regions.push('ja');
+    if (regions.length > 0) {
+      map[devName] = regions;
+    }
+  });
+
+  return map;
+};
+
+const buildSpreadsheetCsvUrl = (spreadsheetId: string, gid: string): string =>
+  `https://docs.google.com/spreadsheets/d/${spreadsheetId}/pub?output=csv&gid=${gid}`;
+
+const parseCsvRows = (csvText: string): string[][] => {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < csvText.length; i += 1) {
+    const char = csvText[i];
+
+    if (char === '"') {
+      if (inQuotes && csvText[i + 1] === '"') {
+        cell += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (!inQuotes && char === ',') {
+      row.push(cell);
+      cell = '';
+      continue;
+    }
+
+    if (!inQuotes && (char === '\n' || char === '\r')) {
+      row.push(cell);
+      cell = '';
+
+      if (char === '\r' && csvText[i + 1] === '\n') {
+        i += 1;
+      }
+
+      if (row.some((token) => token.trim().length > 0)) {
+        rows.push(row);
+      }
+      row = [];
+      continue;
+    }
+
+    cell += char;
+  }
+
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell);
+    if (row.some((token) => token.trim().length > 0)) {
+      rows.push(row);
+    }
+  }
+
+  if (rows.length > 0 && rows[0].length > 0) {
+    rows[0][0] = rows[0][0].replace(/^\uFEFF/, '');
+  }
+
+  return rows;
+};
+
+const normalizeHeaderToken = (value: string): string => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+const getHeaderIndex = (headers: string[], candidates: string[]): number => {
+  const normalizedHeaderMap = new Map<string, number>();
+  headers.forEach((header, index) => normalizedHeaderMap.set(normalizeHeaderToken(header), index));
+
+  for (const candidate of candidates) {
+    const idx = normalizedHeaderMap.get(normalizeHeaderToken(candidate));
+    if (typeof idx === 'number') return idx;
+  }
+
+  return -1;
+};
+
+const getCellValue = (row: string[], index: number): string => {
+  if (index < 0 || index >= row.length) return '';
+  return row[index] ?? '';
+};
+
+const cleanSheetText = (value: string): string => {
+  const token = value.trim();
+  if (token === '(None)') return '';
+  return token;
+};
+
+const parseEquipmentSheetCsv = (csvText: string, sourceLabel: string, sourceTab: string): EquipmentSheetEntry[] => {
+  const rows = parseCsvRows(csvText);
+  if (rows.length < 2) return [];
+
+  const headers = rows[0];
+  const devNicknameIdx = getHeaderIndex(headers, ['Dev Nicknames', 'DevNickname', 'DevName']);
+  if (devNicknameIdx < 0) return [];
+
+  const enNameIdx = getHeaderIndex(headers, ['EN Name']);
+  const jpNameIdx = getHeaderIndex(headers, ['JP Name']);
+  const rarityIdx = getHeaderIndex(headers, ['Rarity']);
+  const attributeIdx = getHeaderIndex(headers, ['Attribute']);
+  const maxHpIdx = getHeaderIndex(headers, ['MaxHP', 'Max HP']);
+  const maxAtkIdx = getHeaderIndex(headers, ['MaxATK', 'Max ATK']);
+  const weaponSkillIdx = getHeaderIndex(headers, ['Weapon Skill']);
+  const abilitySoulIdx = getHeaderIndex(headers, ['Ability Soul']);
+  const awakenLv3Idx = getHeaderIndex(headers, ['Awaken Lv3', 'Awaken LV3']);
+  const awakenLv5Idx = getHeaderIndex(headers, ['Awaken Lv5', 'Awaken LV5']);
+  const enhanceLv1Idx = getHeaderIndex(headers, ['Enhance Lv1', 'Enhance LV1']);
+  const enhanceLv70Idx = getHeaderIndex(headers, ['Enhance Lv70', 'Enhance LV70']);
+  const enhanceLv99Idx = getHeaderIndex(headers, ['Enhance Lv99', 'Enhance LV99']);
+  const enhanceLv100Idx = getHeaderIndex(headers, ['Enhance Lv100', 'Enhance LV100']);
+  const enhanceLv120Idx = getHeaderIndex(headers, ['Enhance Lv120', 'Enhance LV120']);
+  const obtainIdx = getHeaderIndex(headers, ['Obtain']);
+  const otherCommonNamesIdx = getHeaderIndex(headers, ['Other Common Names']);
+  const notesIdx = getHeaderIndex(headers, ['Notes']);
+  const bossIdx = getHeaderIndex(headers, ['Boss']);
+
+  const entries: EquipmentSheetEntry[] = [];
+
+  for (const row of rows.slice(1)) {
+    const devNickname = cleanSheetText(getCellValue(row, devNicknameIdx));
+    if (!devNickname) continue;
+
+    entries.push({
+      sourceTab: `${sourceLabel} - ${sourceTab}`,
+      devNickname,
+      enName: cleanSheetText(getCellValue(row, enNameIdx)),
+      jpName: cleanSheetText(getCellValue(row, jpNameIdx)),
+      rarity: cleanSheetText(getCellValue(row, rarityIdx)),
+      attribute: cleanSheetText(getCellValue(row, attributeIdx)),
+      maxHp: parseNumberLike(getCellValue(row, maxHpIdx)),
+      maxAtk: parseNumberLike(getCellValue(row, maxAtkIdx)),
+      weaponSkill: cleanSheetText(getCellValue(row, weaponSkillIdx)),
+      abilitySoul: cleanSheetText(getCellValue(row, abilitySoulIdx)),
+      awakenLv3: cleanSheetText(getCellValue(row, awakenLv3Idx)),
+      awakenLv5: cleanSheetText(getCellValue(row, awakenLv5Idx)),
+      enhanceLv1: cleanSheetText(getCellValue(row, enhanceLv1Idx)),
+      enhanceLv70: cleanSheetText(getCellValue(row, enhanceLv70Idx)),
+      enhanceLv99: cleanSheetText(getCellValue(row, enhanceLv99Idx)),
+      enhanceLv100: cleanSheetText(getCellValue(row, enhanceLv100Idx)),
+      enhanceLv120: cleanSheetText(getCellValue(row, enhanceLv120Idx)),
+      obtain: cleanSheetText(getCellValue(row, obtainIdx)),
+      otherCommonNames: cleanSheetText(getCellValue(row, otherCommonNamesIdx)),
+      notes: cleanSheetText(getCellValue(row, notesIdx)),
+      boss: cleanSheetText(getCellValue(row, bossIdx)),
+    });
+  }
+
+  return entries;
+};
+
+const fetchEquipmentSheetTab = async (
+  source: SpreadsheetSourceConfig,
+  tab: SpreadsheetTabConfig
+): Promise<EquipmentSheetEntry[]> => {
+  const url = buildSpreadsheetCsvUrl(source.spreadsheetId, tab.gid);
+  const response = await fetch(url, { next: { revalidate: 86400 } });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch equipment spreadsheet tab ${source.label}:${tab.sourceTab} (${response.status})`
+    );
+  }
+
+  const csvText = await response.text();
+  return parseEquipmentSheetCsv(csvText, source.label, tab.sourceTab);
+};
+
+const mergeEquipmentSheetEntries = (base: EquipmentSheetEntry, incoming: EquipmentSheetEntry): EquipmentSheetEntry => ({
+  ...base,
+  enName: base.enName || incoming.enName,
+  jpName: base.jpName || incoming.jpName,
+  rarity: base.rarity || incoming.rarity,
+  attribute: base.attribute || incoming.attribute,
+  maxHp: base.maxHp ?? incoming.maxHp,
+  maxAtk: base.maxAtk ?? incoming.maxAtk,
+  weaponSkill: base.weaponSkill || incoming.weaponSkill,
+  abilitySoul: base.abilitySoul || incoming.abilitySoul,
+  awakenLv3: base.awakenLv3 || incoming.awakenLv3,
+  awakenLv5: base.awakenLv5 || incoming.awakenLv5,
+  enhanceLv1: base.enhanceLv1 || incoming.enhanceLv1,
+  enhanceLv70: base.enhanceLv70 || incoming.enhanceLv70,
+  enhanceLv99: base.enhanceLv99 || incoming.enhanceLv99,
+  enhanceLv100: base.enhanceLv100 || incoming.enhanceLv100,
+  enhanceLv120: base.enhanceLv120 || incoming.enhanceLv120,
+  obtain: base.obtain || incoming.obtain,
+  otherCommonNames: base.otherCommonNames || incoming.otherCommonNames,
+  notes: base.notes || incoming.notes,
+  boss: base.boss || incoming.boss,
+});
+
+const getEquipmentSheetBundle = async (): Promise<EquipmentSheetBundle> => {
+  if (!equipmentSheetBundlePromise) {
+    equipmentSheetBundlePromise = (async () => {
+      const requests = EQUIPMENT_SPREADSHEET_SOURCES.flatMap((source) =>
+        EQUIPMENT_SPREADSHEET_TABS.map((tab) => ({ source, tab }))
+      );
+      const tabResults = await Promise.allSettled(
+        requests.map(({ source, tab }) => fetchEquipmentSheetTab(source, tab))
+      );
+      const sheetMap: Record<string, EquipmentSheetEntry> = {};
+      const regionSets = new Map<string, Set<SheetRegion>>();
+      const defaultKeys = new Set<string>();
+      let jaEntryCount = 0;
+
+      tabResults.forEach((result, index) => {
+        if (result.status !== 'fulfilled') return;
+        const request = requests[index];
+        if (!request) return;
+
+        result.value.forEach((entry) => {
+          const key = normalizeDevNickname(entry.devNickname);
+          if (!key) return;
+          if (!Object.prototype.hasOwnProperty.call(sheetMap, key)) {
+            sheetMap[key] = entry;
+          } else {
+            sheetMap[key] = mergeEquipmentSheetEntries(sheetMap[key], entry);
+          }
+
+          if (request.source.key === 'default') {
+            defaultKeys.add(key);
+          }
+          if (request.source.key === 'gl' || request.source.key === 'ja') {
+            let regionSet = regionSets.get(key);
+            if (!regionSet) {
+              regionSet = new Set<SheetRegion>();
+              regionSets.set(key, regionSet);
+            }
+            regionSet.add(request.source.key);
+            if (request.source.key === 'ja') {
+              jaEntryCount += 1;
+            }
+          }
+        });
+      });
+
+      // If the JP sheet is inaccessible/unpublished, fall back to the default
+      // sheet as JP coverage so the JP filter still works.
+      if (jaEntryCount === 0 && defaultKeys.size > 0) {
+        defaultKeys.forEach((key) => {
+          let regionSet = regionSets.get(key);
+          if (!regionSet) {
+            regionSet = new Set<SheetRegion>();
+            regionSets.set(key, regionSet);
+          }
+          regionSet.add('ja');
+        });
+      }
+
+      const regionMap: Record<string, SheetRegion[]> = {};
+      regionSets.forEach((set, key) => {
+        const nextRegions: SheetRegion[] = [];
+        if (set.has('gl')) nextRegions.push('gl');
+        if (set.has('ja')) nextRegions.push('ja');
+        if (nextRegions.length > 0) {
+          regionMap[key] = nextRegions;
+        }
+      });
+
+      return {
+        sheetMap,
+        regionMap,
+      };
+    })();
+  }
+
+  return equipmentSheetBundlePromise;
+};
+
+const getEquipmentSheetMap = async (): Promise<Record<string, EquipmentSheetEntry>> => {
+  const bundle = await getEquipmentSheetBundle();
+  return bundle.sheetMap;
+};
+
+const getEquipmentRegionMap = async (): Promise<Record<string, SheetRegion[]>> => {
+  if (!equipmentRegionMapPromise) {
+    equipmentRegionMapPromise = (async () => {
+      const byCatalogFiles = await getEquipmentRegionMapFromCatalogFiles();
+      if (Object.keys(byCatalogFiles).length > 0) {
+        return byCatalogFiles;
+      }
+
+      const bundle = await getEquipmentSheetBundle();
+      return bundle.regionMap;
+    })();
+  }
+
+  return equipmentRegionMapPromise;
 };
 
 const buildEquipmentStats = (equipmentId: string, equipmentStatusMap: Record<string, unknown>): EquipmentStatPoint[] => {
@@ -659,6 +1049,8 @@ export const getItemDetailData = async (
     type === 'equipment' ? getAbilityDataMap() : Promise.resolve<Record<string, string[]>>({});
   const equipmentCatalogPromise: Promise<Record<string, EquipmentCatalogEntry>> =
     type === 'equipment' ? getEquipmentCatalogMap() : Promise.resolve<Record<string, EquipmentCatalogEntry>>({});
+  const equipmentSheetPromise: Promise<Record<string, EquipmentSheetEntry>> =
+    type === 'equipment' ? getEquipmentSheetMap() : Promise.resolve<Record<string, EquipmentSheetEntry>>({});
 
   const [
     enhancementOptionsById,
@@ -667,6 +1059,7 @@ export const getItemDetailData = async (
     abilitySoulMap,
     abilityDataMap,
     equipmentCatalogMap,
+    equipmentSheetMap,
     ...sourceReferences
   ] = await Promise.all([
     enhancementOptionsPromise,
@@ -675,6 +1068,7 @@ export const getItemDetailData = async (
     abilitySoulPromise,
     abilityDataPromise,
     equipmentCatalogPromise,
+    equipmentSheetPromise,
     ...RELATION_SOURCES.map((config) => gatherReferencesFromSource(entry.id, config)),
   ]);
 
@@ -702,6 +1096,8 @@ export const getItemDetailData = async (
   const equipmentAbilityProfile = type === 'equipment' ? buildEquipmentAbilityProfile(abilitySoulRow) : null;
   const equipmentAbilities = type === 'equipment' ? buildEquipmentAbilities(abilitySoulRow, abilityDataMap) : [];
   const equipmentCatalogEntry = type === 'equipment' ? equipmentCatalogMap[entry.devname] || null : null;
+  const equipmentSheetEntry =
+    type === 'equipment' ? equipmentSheetMap[normalizeDevNickname(entry.devname)] || null : null;
 
   return {
     entry,
@@ -713,5 +1109,6 @@ export const getItemDetailData = async (
     equipmentAbilityProfile,
     equipmentAbilities,
     equipmentCatalogEntry,
+    equipmentSheetEntry,
   };
 };
