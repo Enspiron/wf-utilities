@@ -2,7 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
+// Dev-only: this route serves files from a hardcoded local datamining
+// directory that only exists on the maintainer's workstation. It must never
+// be reachable in production — the path is Windows-specific and would 500
+// noisily on Vercel — so we hard-fail unless explicitly opted in via env.
+const LOCAL_ASSETS_ENABLED =
+  process.env.NODE_ENV !== 'production' || process.env.LOCAL_ASSETS_ENABLED === '1';
+const LOCAL_ASSETS_DIR = process.env.LOCAL_ASSETS_DIR ?? 'E:\\WFDatamine\\output\\assets';
+
 export async function GET(request: NextRequest) {
+  if (!LOCAL_ASSETS_ENABLED) {
+    return NextResponse.json({ error: 'Local asset serving is disabled' }, { status: 404 });
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const assetPath = searchParams.get('path');
@@ -15,7 +27,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Construct the full local path
-    const localDir = 'E:\\WFDatamine\\output\\assets';
+    const localDir = LOCAL_ASSETS_DIR;
     const fullPath = path.join(localDir, assetPath);
 
     // Security check - ensure the path is within the allowed directory

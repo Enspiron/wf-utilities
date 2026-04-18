@@ -1,6 +1,6 @@
 'use client';
 
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   BookOpen,
@@ -9,6 +9,7 @@ import {
   Download,
   FileJson,
   FileUp,
+  Link2,
   Loader2,
   Layers,
   Package,
@@ -21,6 +22,8 @@ import {
   Wrench,
 } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -128,6 +131,10 @@ type PartyPickerState = {
   field: PartyPickerField;
   kind: PartyPickerKind;
   title: string;
+};
+type PartyEditorState = {
+  groupId: string;
+  slotId: string;
 };
 type StoryEntry = {
   chapterId: string;
@@ -300,6 +307,8 @@ const CHARACTER_PAGE_SIZE = 500;
 const ITEM_PAGE_SIZE = 240;
 const EQUIPMENT_PAGE_SIZE = 240;
 const PARTY_PAGE_SIZE = 24;
+const PARTY_GRID_COLUMN_COUNT = 6;
+const PARTY_GRID_ROW_COUNT = 10;
 const PARTY_PICKER_SEARCH_DEBOUNCE_MS = 90;
 const PARTY_PICKER_INITIAL_RENDER_COUNT = 180;
 const PARTY_PICKER_RENDER_BATCH_SIZE = 180;
@@ -327,6 +336,9 @@ const EQUIPMENT_LEVEL_POINT_MAX = 4;
 const EQUIPMENT_SAVE_LEVEL_MIN = 1;
 const EQUIPMENT_SAVE_LEVEL_MAX = 5;
 const EQUIPMENT_LEVEL_POINTS = [0, 1, 2, 3, 4] as const;
+const EQUIPMENT_AWAKENING_SLOT_COUNT = 4;
+const EQUIPMENT_AWAKENING_COLOR_ICON = '/FilterIcons/awakening_color.png';
+const EQUIPMENT_AWAKENING_GRAY_ICON = '/FilterIcons/awakening_gray.png';
 type EquipmentLevelPoint = (typeof EQUIPMENT_LEVEL_POINTS)[number];
 const CHARACTER_LEVEL_STOPS = [80, 85, 90, 95, 100] as const;
 type CharacterLevelStop = (typeof CHARACTER_LEVEL_STOPS)[number];
@@ -730,6 +742,16 @@ function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function getObjectOrArrayEntries(value: unknown): Array<[string, unknown]> {
+  if (Array.isArray(value)) {
+    return value.map((entry, index) => [String(index), entry] as [string, unknown]);
+  }
+  if (isObject(value)) {
+    return Object.entries(value);
+  }
+  return [];
+}
+
 function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -748,6 +770,37 @@ function parseJson(input: string): { ok: true; value: unknown } | { ok: false; e
     const message = error instanceof Error ? error.message : 'Invalid JSON.';
     return { ok: false, error: message };
   }
+}
+
+function extractSharedSaveSlug(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return '';
+
+  const queryMatch = trimmed.match(/[?&]importShare=([^&#]+)/i);
+  if (queryMatch?.[1]) {
+    return decodeURIComponent(queryMatch[1]).trim();
+  }
+
+  const apiMatch = trimmed.match(/\/api\/save-shares\/([^/?#]+)/i);
+  if (apiMatch?.[1]) {
+    return decodeURIComponent(apiMatch[1]).trim();
+  }
+
+  try {
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+    const parsed = new URL(trimmed, base);
+    const fromQuery = parsed.searchParams.get('importShare');
+    if (fromQuery) return fromQuery.trim();
+
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    if (segments.length > 0) {
+      return decodeURIComponent(segments[segments.length - 1]);
+    }
+  } catch {
+    // fallback to raw input
+  }
+
+  return trimmed;
 }
 
 function looksLikeSaveData(value: JsonObject): boolean {
@@ -1411,7 +1464,8 @@ function AssetThumb({
   );
 }
 
-export default function SaveEditorPage() {
+function SaveEditorPageClient() {
+  const searchParams = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const rawTextAreaRef = useRef<HTMLTextAreaElement>(null);
   const characterContextMenuRef = useRef<HTMLDivElement>(null);
@@ -1419,6 +1473,7 @@ export default function SaveEditorPage() {
   const equipmentContextMenuRef = useRef<HTMLDivElement>(null);
   const partyPickerSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const partyShareFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sharedImportHandledRef = useRef<string | null>(null);
   const partyImportInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<EditorTab>('general');
   const [saveDocument, setSaveDocument] = useState<SaveDocument | null>(null);
@@ -1426,6 +1481,8 @@ export default function SaveEditorPage() {
   const [outputFileName, setOutputFileName] = useState('edited_save.json');
   const [notice, setNotice] = useState<Notice>(null);
   const [loadingTemplate, setLoadingTemplate] = useState<TemplateKind | null>(null);
+  const [sharedImportInput, setSharedImportInput] = useState('');
+  const [sharedImportLoading, setSharedImportLoading] = useState(false);
 
   const [rawText, setRawText] = useState('');
   const [rawDirty, setRawDirty] = useState(false);
@@ -1470,6 +1527,7 @@ export default function SaveEditorPage() {
   const [partyPage, setPartyPage] = useState(1);
   const [partyImportSlotKey, setPartyImportSlotKey] = useState<string | null>(null);
   const [partyShareFeedbackKey, setPartyShareFeedbackKey] = useState<string | null>(null);
+  const [partyEditor, setPartyEditor] = useState<PartyEditorState | null>(null);
   const [partyPicker, setPartyPicker] = useState<PartyPickerState | null>(null);
   const [partyPickerSearch, setPartyPickerSearch] = useState('');
   const [partyPickerRenderCount, setPartyPickerRenderCount] = useState(PARTY_PICKER_INITIAL_RENDER_COUNT);
@@ -2853,19 +2911,41 @@ export default function SaveEditorPage() {
   }, [selectedEquipmentEnhancement, selectedEquipmentEnhancementSelectableValues]);
 
   const partyEntries = useMemo(() => {
-    if (!saveDocument || !isObject(saveDocument.data.user_party_group_list)) return [] as PartyEntry[];
-    const entries: PartyEntry[] = [];
+    if (!saveDocument) return [] as PartyEntry[];
+    const groupEntriesRaw = getObjectOrArrayEntries(saveDocument.data.user_party_group_list);
+    if (groupEntriesRaw.length === 0) return [] as PartyEntry[];
 
-    for (const [groupId, groupValue] of Object.entries(saveDocument.data.user_party_group_list)) {
-      if (!isObject(groupValue)) continue;
-      const list = isObject(groupValue.list) ? (groupValue.list as Record<string, unknown>) : {};
-      for (const [slotId, slotValue] of Object.entries(list)) {
+    const hasGroupOneKey = groupEntriesRaw.some(([rawGroupId]) => getNumberValue(rawGroupId, Number.NaN) === 1);
+    const byKey = new Map<string, PartyEntry>();
+
+    for (const [rawGroupId, groupValue] of groupEntriesRaw) {
+      const parsedGroupId = getNumberValue(rawGroupId, Number.NaN);
+      const normalizedGroupId =
+        Number.isFinite(parsedGroupId) && !hasGroupOneKey && parsedGroupId >= 0 ? String(parsedGroupId + 1) : rawGroupId;
+
+      const groupObject = isObject(groupValue) ? groupValue : null;
+      const listValue = groupObject?.list ?? groupValue;
+      const slotEntriesRaw = getObjectOrArrayEntries(listValue);
+      if (slotEntriesRaw.length === 0) continue;
+
+      const hasSlotOneKey = slotEntriesRaw.some(([rawSlotId]) => getNumberValue(rawSlotId, Number.NaN) === 1);
+      for (const [rawSlotId, slotValue] of slotEntriesRaw) {
         if (!isObject(slotValue)) continue;
-        entries.push({ groupId, slotId, value: slotValue });
+
+        const parsedSlotId = getNumberValue(rawSlotId, Number.NaN);
+        let normalizedSlotId = rawSlotId;
+        if (Number.isFinite(parsedSlotId)) {
+          const adjustedSlotId = !hasSlotOneKey && parsedSlotId >= 0 ? parsedSlotId + 1 : parsedSlotId;
+          if (adjustedSlotId < 1) continue;
+          normalizedSlotId = String(adjustedSlotId);
+        }
+
+        const key = `${normalizedGroupId}-${normalizedSlotId}`;
+        byKey.set(key, { groupId: normalizedGroupId, slotId: normalizedSlotId, value: slotValue });
       }
     }
 
-    return entries.sort((a, b) => {
+    return Array.from(byKey.values()).sort((a, b) => {
       const groupDiff = getNumberValue(a.groupId, 0) - getNumberValue(b.groupId, 0);
       if (groupDiff !== 0) return groupDiff;
       return getNumberValue(a.slotId, 0) - getNumberValue(b.slotId, 0);
@@ -2890,6 +2970,47 @@ export default function SaveEditorPage() {
     const start = (partyPage - 1) * PARTY_PAGE_SIZE;
     return filteredPartyEntries.slice(start, start + PARTY_PAGE_SIZE);
   }, [filteredPartyEntries, partyPage]);
+  const filteredPartySlotKeySet = useMemo(() => {
+    return new Set(filteredPartyEntries.map((entry) => `${entry.groupId}-${entry.slotId}`));
+  }, [filteredPartyEntries]);
+  const partyEntryBySlotKey = useMemo(() => {
+    const map = new Map<string, PartyEntry>();
+    for (const entry of partyEntries) {
+      map.set(`${entry.groupId}-${entry.slotId}`, entry);
+    }
+    return map;
+  }, [partyEntries]);
+  const partyGridGroupIds = useMemo(() => {
+    const ids = Array.from(new Set(partyEntries.map((entry) => entry.groupId))).sort(
+      (a, b) => getNumberValue(a, 0) - getNumberValue(b, 0)
+    );
+    if (ids.length >= PARTY_GRID_COLUMN_COUNT) return ids.slice(0, PARTY_GRID_COLUMN_COUNT);
+    return Array.from({ length: PARTY_GRID_COLUMN_COUNT }, (_, index) => String(index + 1));
+  }, [partyEntries]);
+  const partySlotIdsByGroupId = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const entry of partyEntries) {
+      if (!map[entry.groupId]) {
+        map[entry.groupId] = [];
+      }
+      map[entry.groupId].push(entry.slotId);
+    }
+    for (const groupId of Object.keys(map)) {
+      map[groupId].sort((a, b) => getNumberValue(a, 0) - getNumberValue(b, 0));
+    }
+    return map;
+  }, [partyEntries]);
+  const partyGridRowIndexes = useMemo(() => {
+    return Array.from({ length: PARTY_GRID_ROW_COUNT }, (_, index) => index);
+  }, []);
+  const selectedPartySlotKey = useMemo(() => {
+    if (!partyEditor) return null;
+    return `${partyEditor.groupId}-${partyEditor.slotId}`;
+  }, [partyEditor]);
+  const selectedPartyEntry = useMemo(() => {
+    if (!selectedPartySlotKey) return null;
+    return partyEntryBySlotKey.get(selectedPartySlotKey) ?? null;
+  }, [partyEntryBySlotKey, selectedPartySlotKey]);
 
   const partyPickerCurrentValue = useMemo(() => {
     if (!partyPicker || !saveDocument) return 0;
@@ -3484,6 +3605,46 @@ export default function SaveEditorPage() {
       event.target.value = '';
     }
   };
+
+  const importSharedSave = async (value: string) => {
+    const slug = extractSharedSaveSlug(value);
+    if (!slug) {
+      setNotice({ type: 'error', message: 'Enter a shared save slug or link first.' });
+      return;
+    }
+
+    setSharedImportLoading(true);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/save-shares/${encodeURIComponent(slug)}/clone`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string; save?: unknown };
+      if (!response.ok || !payload.ok || payload.save === undefined) {
+        setNotice({ type: 'error', message: payload.error || 'Failed to import shared save.' });
+        return;
+      }
+
+      setSharedImportInput(slug);
+      loadJsonText(JSON.stringify(payload.save), `Shared save (${slug})`, `shared_${slug}.json`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to import shared save.';
+      setNotice({ type: 'error', message });
+    } finally {
+      setSharedImportLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const slugFromQuery = extractSharedSaveSlug(searchParams.get('importShare') || '');
+    if (!slugFromQuery) return;
+    if (sharedImportHandledRef.current === slugFromQuery) return;
+    sharedImportHandledRef.current = slugFromQuery;
+    setSharedImportInput(slugFromQuery);
+    void importSharedSave(slugFromQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const downloadSave = () => {
     if (!saveDocument) {
@@ -4977,6 +5138,29 @@ export default function SaveEditorPage() {
                 {loadingTemplate === 'mostly_complete' ? <Loader2 className='mr-2 h-4 w-4 animate-spin' /> : null}
                 Start Mostly Complete
               </Button>
+              <div className='flex min-w-[250px] flex-wrap items-center gap-2'>
+                <Input
+                  value={sharedImportInput}
+                  onChange={(event) => setSharedImportInput(event.target.value)}
+                  placeholder='Shared slug or link'
+                  className='h-9 min-w-[220px] flex-1'
+                />
+                <Button
+                  variant='outline'
+                  onClick={() => void importSharedSave(sharedImportInput)}
+                  disabled={sharedImportLoading}
+                >
+                  {sharedImportLoading ? (
+                    <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                  ) : (
+                    <Link2 className='mr-2 h-4 w-4' />
+                  )}
+                  Import Shared
+                </Button>
+              </div>
+              <Link href='/saves'>
+                <Button variant='outline'>Saves</Button>
+              </Link>
               <Button variant='secondary' onClick={downloadSave} disabled={!saveDocument} className='gap-2'>
                 <Download className='h-4 w-4' />
                 Download
@@ -6906,92 +7090,157 @@ export default function SaveEditorPage() {
                       </DialogHeader>
 
                       <div className='rounded-lg border bg-muted/20 p-3'>
-                        <div className='flex flex-wrap items-start justify-between gap-3'>
-                          <div className='flex items-start gap-3'>
-                            <AssetThumb
-                              urls={[
-                                toCdnUrl(itemMetaById[selectedEquipmentId]?.thumbnail || ''),
-                                toCdnUrl(itemMetaById[selectedEquipmentId]?.icon || ''),
-                              ].filter(Boolean)}
-                              alt={itemMetaById[selectedEquipmentId]?.name || `Equipment ${selectedEquipmentId}`}
-                              size={92}
-                              pixelated
-                            />
-                            <div className='space-y-2'>
-                              <div className='flex flex-wrap gap-2'>
-                                <Badge variant={selectedEquipment ? 'default' : 'secondary'}>
-                                  {selectedEquipment ? 'Owned' : 'Unowned'}
-                                </Badge>
-                                <Badge variant='outline'>
-                                  Tone {equipmentBorderToneById[selectedEquipmentId] ?? 'default'}
-                                </Badge>
+                        <div className={selectedEquipment ? 'grid gap-3 md:grid-cols-[minmax(0,1fr)_300px]' : 'space-y-3'}>
+                          <div className='space-y-3'>
+                            <div className='flex items-start gap-3'>
+                              <AssetThumb
+                                urls={[
+                                  toCdnUrl(itemMetaById[selectedEquipmentId]?.thumbnail || ''),
+                                  toCdnUrl(itemMetaById[selectedEquipmentId]?.icon || ''),
+                                ].filter(Boolean)}
+                                alt={itemMetaById[selectedEquipmentId]?.name || `Equipment ${selectedEquipmentId}`}
+                                size={92}
+                                pixelated
+                              />
+                              <div className='space-y-2'>
+                                <div className='flex flex-wrap gap-2'>
+                                  <Badge variant={selectedEquipment ? 'default' : 'secondary'}>
+                                    {selectedEquipment ? 'Owned' : 'Unowned'}
+                                  </Badge>
+                                  <Badge variant='outline'>
+                                    Tone {equipmentBorderToneById[selectedEquipmentId] ?? 'default'}
+                                  </Badge>
+                                </div>
+                                <p className='text-xs text-muted-foreground'>
+                                  Click presets for quick setup, or fine-tune with sliders below.
+                                </p>
                               </div>
-                              <p className='text-xs text-muted-foreground'>
-                                Click presets for quick setup, or fine-tune with sliders below.
-                              </p>
                             </div>
-                          </div>
-                          <div className='flex flex-wrap gap-2'>
-                            {!selectedEquipment && (
-                              <Button
-                                size='sm'
-                                onClick={() => {
-                                  const added = addEquipmentById(selectedEquipmentId);
-                                  if (added) {
-                                    setNotice({ type: 'success', message: `Equipment ${selectedEquipmentId} added.` });
-                                  }
-                                }}
-                                disabled={!saveDocument}
-                              >
-                                Add To Save
-                              </Button>
-                            )}
-                            {selectedEquipment && (
-                              <>
+                            <div className='flex flex-wrap gap-2'>
+                              {!selectedEquipment && (
                                 <Button
                                   size='sm'
-                                  variant='secondary'
-                                  onClick={() => applyEquipmentPreset(selectedEquipmentId, 'min')}
-                                  disabled={!saveDocument}
-                                >
-                                  Min
-                                </Button>
-                                <Button
-                                  size='sm'
-                                  variant='secondary'
-                                  onClick={() => applyEquipmentPreset(selectedEquipmentId, 'max')}
-                                  disabled={!saveDocument}
-                                >
-                                  Max
-                                </Button>
-                                <Button
-                                  size='sm'
-                                  variant='secondary'
-                                  onClick={() => applyEquipmentPreset(selectedEquipmentId, 'max_lock')}
-                                  disabled={!saveDocument}
-                                >
-                                  Max + Lock
-                                </Button>
-                                <Button
-                                  size='sm'
-                                  variant='outline'
-                                  className='text-destructive hover:text-destructive'
                                   onClick={() => {
-                                    removeEquipment(selectedEquipmentId);
-                                    setSelectedEquipmentId(null);
-                                    setNotice({
-                                      type: 'info',
-                                      message: `Equipment ${selectedEquipmentId} removed from save.`,
-                                    });
+                                    const added = addEquipmentById(selectedEquipmentId);
+                                    if (added) {
+                                      setNotice({ type: 'success', message: `Equipment ${selectedEquipmentId} added.` });
+                                    }
                                   }}
                                   disabled={!saveDocument}
                                 >
-                                  <Trash2 className='mr-2 h-4 w-4' />
-                                  Remove
+                                  Add To Save
                                 </Button>
-                              </>
-                            )}
+                              )}
+                              {selectedEquipment && (
+                                <>
+                                  <Button
+                                    size='sm'
+                                    variant='secondary'
+                                    onClick={() => applyEquipmentPreset(selectedEquipmentId, 'min')}
+                                    disabled={!saveDocument}
+                                  >
+                                    Min
+                                  </Button>
+                                  <Button
+                                    size='sm'
+                                    variant='secondary'
+                                    onClick={() => applyEquipmentPreset(selectedEquipmentId, 'max')}
+                                    disabled={!saveDocument}
+                                  >
+                                    Max
+                                  </Button>
+                                  <Button
+                                    size='sm'
+                                    variant='secondary'
+                                    onClick={() => applyEquipmentPreset(selectedEquipmentId, 'max_lock')}
+                                    disabled={!saveDocument}
+                                  >
+                                    Max + Lock
+                                  </Button>
+                                  <Button
+                                    size='sm'
+                                    variant='outline'
+                                    className='text-destructive hover:text-destructive'
+                                    onClick={() => {
+                                      removeEquipment(selectedEquipmentId);
+                                      setSelectedEquipmentId(null);
+                                      setNotice({
+                                        type: 'info',
+                                        message: `Equipment ${selectedEquipmentId} removed from save.`,
+                                      });
+                                    }}
+                                    disabled={!saveDocument}
+                                  >
+                                    <Trash2 className='mr-2 h-4 w-4' />
+                                    Remove
+                                  </Button>
+                                </>
+                              )}
+                            </div>
                           </div>
+
+                          {selectedEquipment && (
+                            <div className='rounded-md border bg-background/50 p-3'>
+                              <div className='mb-2 flex items-center justify-between'>
+                                <p className='text-[10px] uppercase text-muted-foreground'>Level</p>
+                                <Badge variant='outline' className='text-xs font-semibold'>
+                                  {selectedEquipmentLevelPoint}/{EQUIPMENT_LEVEL_POINT_MAX}
+                                </Badge>
+                              </div>
+                              <div className='mb-3 grid grid-cols-5 gap-1.5'>
+                                {EQUIPMENT_LEVEL_POINTS.map((levelPoint) => {
+                                  const active = selectedEquipmentLevelPoint === levelPoint;
+                                  return (
+                                    <button
+                                      key={levelPoint}
+                                      type='button'
+                                      className={`rounded-md border px-1 py-1.5 text-[10px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60 ${
+                                        active
+                                          ? 'border-primary/80 bg-primary/15 text-primary'
+                                          : 'border-border bg-background/70 text-muted-foreground hover:bg-accent'
+                                      }`}
+                                      onClick={() => handleEquipmentLevelPointChange(selectedEquipmentId, levelPoint)}
+                                      disabled={!saveDocument}
+                                      title={`${levelPoint}/${EQUIPMENT_LEVEL_POINT_MAX}`}
+                                      aria-label={`Set equipment level to ${levelPoint}/${EQUIPMENT_LEVEL_POINT_MAX}`}
+                                    >
+                                      {levelPoint === 0 ? (
+                                        <span className='inline-flex h-4 items-center text-[10px] font-semibold'>Base</span>
+                                      ) : (
+                                        <span className='inline-flex items-center justify-center gap-0.5'>
+                                          {Array.from({ length: EQUIPMENT_AWAKENING_SLOT_COUNT }, (_, slotIndex) => (
+                                            <img
+                                              key={`${levelPoint}-${slotIndex}`}
+                                              src={
+                                                slotIndex < levelPoint
+                                                  ? EQUIPMENT_AWAKENING_COLOR_ICON
+                                                  : EQUIPMENT_AWAKENING_GRAY_ICON
+                                              }
+                                              alt={slotIndex < levelPoint ? 'Awakening filled' : 'Awakening empty'}
+                                              className='h-4 w-auto [image-rendering:pixelated]'
+                                            />
+                                          ))}
+                                        </span>
+                                      )}
+                                      <span className='block text-[10px] font-semibold leading-tight'>
+                                        {levelPoint}/{EQUIPMENT_LEVEL_POINT_MAX}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <Slider
+                                min={0}
+                                max={EQUIPMENT_LEVEL_POINT_MAX}
+                                step={1}
+                                value={[selectedEquipmentLevelPoint]}
+                                onValueChange={(values) =>
+                                  handleEquipmentLevelPointChange(selectedEquipmentId, Math.floor(values[0] ?? 0))
+                                }
+                                disabled={!saveDocument}
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -7001,45 +7250,6 @@ export default function SaveEditorPage() {
                         </div>
                       ) : (
                         <div className='space-y-3'>
-                          <div className='rounded-md border bg-muted/20 p-3'>
-                            <div className='mb-2 flex items-center justify-between'>
-                              <p className='text-[10px] uppercase text-muted-foreground'>Level</p>
-                              <Badge variant='outline'>
-                                {selectedEquipmentLevelPoint}/{EQUIPMENT_LEVEL_POINT_MAX}
-                              </Badge>
-                            </div>
-                            <Slider
-                              min={0}
-                              max={EQUIPMENT_LEVEL_POINT_MAX}
-                              step={1}
-                              value={[selectedEquipmentLevelPoint]}
-                              onValueChange={(values) =>
-                                handleEquipmentLevelPointChange(selectedEquipmentId, Math.floor(values[0] ?? 0))
-                              }
-                              disabled={!saveDocument}
-                            />
-                            <div className='mt-2 grid grid-cols-5 gap-1'>
-                              {EQUIPMENT_LEVEL_POINTS.map((levelPoint) => {
-                                const active = selectedEquipmentLevelPoint === levelPoint;
-                                return (
-                                  <button
-                                    key={levelPoint}
-                                    type='button'
-                                    className={`rounded-md border px-1 py-1 text-[11px] font-semibold transition ${
-                                      active
-                                        ? 'border-primary/70 bg-primary/15 text-primary'
-                                        : 'border-border bg-background/70 text-muted-foreground hover:bg-accent'
-                                    }`}
-                                    onClick={() => handleEquipmentLevelPointChange(selectedEquipmentId, levelPoint)}
-                                    disabled={!saveDocument}
-                                  >
-                                    {levelPoint}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-
                           {selectedEquipmentEnhanceable ? (
                             <div className='rounded-md border bg-muted/20 p-3'>
                               <div className='mb-2 flex items-center justify-between'>
@@ -7146,267 +7356,315 @@ export default function SaveEditorPage() {
                 </div>
               </div>
 
-              <div className='grid gap-3 lg:grid-cols-2 2xl:grid-cols-3'>
-                {visiblePartyEntries.map((entry) => {
-                  const partyName = getStringValue(entry.value.name);
-                  const title = partyName || `Party ${entry.slotId}`;
-                  const edited = Boolean(entry.value.edited);
-                  const partySlotKey = `${entry.groupId}-${entry.slotId}`;
-                  const importActive = partyImportSlotKey === partySlotKey;
-                  const shareFeedbackVisible = partyShareFeedbackKey === partySlotKey;
-
-                  return (
-                    <div key={`${entry.groupId}-${entry.slotId}`} className='rounded-xl border border-border/70 bg-background/50 p-3'>
-                      <div className='mb-2 flex items-start justify-between gap-2'>
-                        <div className='min-w-0'>
-                          <p className='truncate text-sm font-semibold'>{title}</p>
-                          <p className='font-mono text-xs text-muted-foreground'>
-                            Group {entry.groupId} - Slot {entry.slotId}
-                          </p>
-                        </div>
-                        <Badge variant={edited ? 'default' : 'outline'}>{edited ? 'Edited' : 'Default'}</Badge>
-                      </div>
-
-                      <div className='mb-2'>
-                        <p className='mb-1 text-[10px] uppercase text-muted-foreground'>Party Name</p>
-                        <Input
-                          value={partyName}
-                          onChange={(event) =>
-                            updatePartySlotField(entry.groupId, entry.slotId, 'name', null, event.target.value)
-                          }
-                          disabled={!saveDocument}
-                        />
-                      </div>
-
-                      <div className='grid gap-2 sm:grid-cols-3'>
-                        {[0, 1, 2].map((slotIndex) => {
-                          const characterId = getArrayNumberAt(entry.value.character_ids, slotIndex);
-                          const unisonId = getArrayNumberAt(entry.value.unison_character_ids, slotIndex);
-                          const equipmentId = getArrayNumberAt(entry.value.equipment_ids, slotIndex);
-                          const soulId = getArrayNumberAt(entry.value.ability_soul_ids, slotIndex);
-
-                          const characterMeta = characterId > 0 ? characterMetaById[String(characterId)] : undefined;
-                          const unisonMeta = unisonId > 0 ? characterMetaById[String(unisonId)] : undefined;
-                          const equipmentMeta = equipmentId > 0 ? itemMetaById[String(equipmentId)] : undefined;
-                          const soulMeta = soulId > 0 ? itemMetaById[String(soulId)] : undefined;
-
-                          const characterName =
-                            characterMeta?.nameEN || characterMeta?.nameJP || (characterId > 0 ? `Character ${characterId}` : 'No main');
-                          const unisonName =
-                            unisonMeta?.nameEN || unisonMeta?.nameJP || (unisonId > 0 ? `Character ${unisonId}` : 'No unison');
-                          const equipmentName = equipmentMeta?.name || (equipmentId > 0 ? `Equipment ${equipmentId}` : 'No equipment');
-                          const soulName = soulMeta?.name || (soulId > 0 ? `Soul ${soulId}` : 'No soul');
-
-                          const characterThumbUrls = characterMeta ? buildCharacterThumbUrls(characterMeta.faceCode) : [];
-                          const unisonThumbUrls = unisonMeta ? buildCharacterThumbUrls(unisonMeta.faceCode) : [];
-                          const equipmentThumbUrls = [
-                            toCdnUrl(equipmentMeta?.thumbnail || ''),
-                            toCdnUrl(equipmentMeta?.icon || ''),
-                          ].filter(Boolean);
-                          const soulThumbUrls = [toCdnUrl(soulMeta?.thumbnail || ''), toCdnUrl(soulMeta?.icon || '')].filter(Boolean);
-
-                          const slotFields: Array<{
-                            key: PartyPickerField;
-                            kind: PartyPickerKind;
-                            label: string;
-                            idValue: number;
-                            name: string;
-                            thumbUrls: string[];
-                            pixelated: boolean;
-                            pickerTitle: string;
-                          }> = [
-                            {
-                              key: 'character_ids',
-                              kind: 'character',
-                              label: 'Main',
-                              idValue: characterId,
-                              name: characterName,
-                              thumbUrls: characterThumbUrls,
-                              pixelated: false,
-                              pickerTitle: `Pick Main Unit - Group ${entry.groupId} Slot ${entry.slotId} #${slotIndex + 1}`,
-                            },
-                            {
-                              key: 'unison_character_ids',
-                              kind: 'character',
-                              label: 'Unison',
-                              idValue: unisonId,
-                              name: unisonName,
-                              thumbUrls: unisonThumbUrls,
-                              pixelated: false,
-                              pickerTitle: `Pick Unison - Group ${entry.groupId} Slot ${entry.slotId} #${slotIndex + 1}`,
-                            },
-                            {
-                              key: 'equipment_ids',
-                              kind: 'equipment',
-                              label: 'Equipment',
-                              idValue: equipmentId,
-                              name: equipmentName,
-                              thumbUrls: equipmentThumbUrls,
-                              pixelated: true,
-                              pickerTitle: `Pick Equipment - Group ${entry.groupId} Slot ${entry.slotId} #${slotIndex + 1}`,
-                            },
-                            {
-                              key: 'ability_soul_ids',
-                              kind: 'equipment',
-                              label: 'Soul',
-                              idValue: soulId,
-                              name: soulName,
-                              thumbUrls: soulThumbUrls,
-                              pixelated: true,
-                              pickerTitle: `Pick Soul - Group ${entry.groupId} Slot ${entry.slotId} #${slotIndex + 1}`,
-                            },
-                          ];
-
+              <div className='overflow-x-auto rounded-lg border border-border/70 bg-background/40 p-2'>
+                <table className='w-full min-w-[920px] border-collapse text-left'>
+                  <thead>
+                    <tr className='border-b border-border/70'>
+                      <th className='w-[84px] px-2 py-2 text-[11px] uppercase tracking-wide text-muted-foreground'>Slot</th>
+                      {partyGridGroupIds.map((groupId) => (
+                        <th
+                          key={`group-header-${groupId}`}
+                          className='px-2 py-2 text-center text-[11px] uppercase tracking-wide text-muted-foreground'
+                        >
+                          Group {groupId}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {partyGridRowIndexes.map((rowIndex) => (
+                      <tr key={`slot-row-${rowIndex}`} className='border-b border-border/40 last:border-b-0'>
+                        <th className='w-[84px] px-2 py-2 align-middle text-xs font-semibold text-muted-foreground'>
+                          Slot {rowIndex + 1}
+                        </th>
+                        {partyGridGroupIds.map((groupId) => {
+                          const groupSlotIds = partySlotIdsByGroupId[groupId] ?? [];
+                          const slotId =
+                            groupSlotIds[rowIndex] ??
+                            String((Math.max(1, getNumberValue(groupId, 1)) - 1) * PARTY_GRID_ROW_COUNT + rowIndex + 1);
+                          const slotKey = `${groupId}-${slotId}`;
+                          const entry = partyEntryBySlotKey.get(slotKey) ?? null;
+                          const inSearch = filteredPartySlotKeySet.has(slotKey);
+                          const partyName = entry ? getStringValue(entry.value.name) : '';
+                          const edited = entry ? Boolean(entry.value.edited) : false;
+                          const buttonLabel = partyName || `Party ${slotId}`;
                           return (
-                            <div key={slotIndex} className='rounded-lg border border-border/70 bg-background/60 p-2'>
-                              <p className='mb-2 text-[10px] uppercase text-muted-foreground'>Slot {slotIndex + 1}</p>
-                              <div className='space-y-1.5'>
-                                {slotFields.map((field) => (
-                                  <div key={field.key} className='space-y-1'>
-                                    <p className='text-[10px] uppercase text-muted-foreground'>{field.label}</p>
-                                    <button
-                                      type='button'
-                                      className='flex w-full items-center justify-center rounded-md border border-border/60 bg-background/85 p-1.5 text-left transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60'
-                                      onClick={() =>
-                                        openPartyPicker(
-                                          entry.groupId,
-                                          entry.slotId,
-                                          slotIndex,
-                                          field.key,
-                                          field.kind,
-                                          field.pickerTitle
-                                        )
-                                      }
-                                      title={field.name}
-                                      disabled={!saveDocument}
-                                    >
-                                      <AssetThumb
-                                        urls={field.thumbUrls}
-                                        alt={field.name}
-                                        size={36}
-                                        pixelated={field.pixelated}
-                                      />
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
+                            <td key={`party-cell-${slotKey}`} className='px-2 py-2 align-middle'>
+                              <button
+                                type='button'
+                                className={`w-full rounded-md border px-2 py-2 text-left transition ${
+                                  edited
+                                    ? 'border-primary/50 bg-primary/10 hover:bg-primary/15'
+                                    : 'border-border bg-background/70 hover:bg-accent'
+                                } ${partySearch.trim() && !inSearch ? 'opacity-40' : 'opacity-100'} disabled:cursor-not-allowed disabled:opacity-40`}
+                                onClick={() => {
+                                  if (!entry) return;
+                                  setPartyEditor({ groupId, slotId });
+                                  setPartyImportSlotKey(null);
+                                }}
+                                title={`${buttonLabel} (Group ${groupId} Slot ${rowIndex + 1}, ID ${slotId})`}
+                                disabled={!saveDocument || !entry}
+                              >
+                                <p className='truncate text-xs font-semibold'>{buttonLabel}</p>
+                                <p className='mt-0.5 text-[10px] text-muted-foreground'>{edited ? 'Edited' : 'Default'}</p>
+                              </button>
+                            </td>
                           );
                         })}
-                      </div>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-                      <div className='mt-3 flex items-center justify-between gap-2'>
-                        <label className='flex items-center gap-2 text-xs text-muted-foreground'>
-                          <input
-                            type='checkbox'
-                            checked={edited}
-                            onChange={(event) => setPartySlotEdited(entry.groupId, entry.slotId, event.target.checked)}
+              <p className='text-xs text-muted-foreground'>
+                Click any party cell to open full team editing in a modal. Showing {partyGridGroupIds.length} groups x{' '}
+                {partyGridRowIndexes.length} slots.
+              </p>
+
+              <Dialog
+                open={Boolean(partyEditor)}
+                onOpenChange={(open) => {
+                  if (!open) {
+                    setPartyEditor(null);
+                    cancelPartySlotLinkImport();
+                  }
+                }}
+              >
+                <DialogContent className='max-h-[92vh] overflow-y-auto sm:max-w-3xl'>
+                  {partyEditor && selectedPartyEntry ? (
+                    <>
+                      <DialogHeader>
+                        <DialogTitle>{getStringValue(selectedPartyEntry.value.name) || `Party ${partyEditor.slotId}`}</DialogTitle>
+                        <DialogDescription className='font-mono'>
+                          Group {partyEditor.groupId} - Slot {partyEditor.slotId}
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className='space-y-3'>
+                        <div>
+                          <p className='mb-1 text-[10px] uppercase text-muted-foreground'>Party Name</p>
+                          <Input
+                            value={getStringValue(selectedPartyEntry.value.name)}
+                            onChange={(event) =>
+                              updatePartySlotField(
+                                selectedPartyEntry.groupId,
+                                selectedPartyEntry.slotId,
+                                'name',
+                                null,
+                                event.target.value
+                              )
+                            }
                             disabled={!saveDocument}
                           />
-                          Edited
-                        </label>
-                        <div className='flex items-center gap-2'>
-                          {importActive ? (
-                            <div className='flex w-[148px] items-center gap-1'>
-                              <Input
-                                key={partySlotKey}
-                                ref={partyImportInputRef}
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter') {
-                                    event.preventDefault();
-                                    confirmPartySlotLinkImport(entry.groupId, entry.slotId, event.currentTarget.value);
-                                  } else if (event.key === 'Escape') {
-                                    event.preventDefault();
-                                    cancelPartySlotLinkImport();
+                        </div>
+
+                        <div className='grid gap-2 sm:grid-cols-3'>
+                          {[0, 1, 2].map((slotIndex) => {
+                            const characterId = getArrayNumberAt(selectedPartyEntry.value.character_ids, slotIndex);
+                            const unisonId = getArrayNumberAt(selectedPartyEntry.value.unison_character_ids, slotIndex);
+                            const equipmentId = getArrayNumberAt(selectedPartyEntry.value.equipment_ids, slotIndex);
+                            const soulId = getArrayNumberAt(selectedPartyEntry.value.ability_soul_ids, slotIndex);
+
+                            const characterMeta = characterId > 0 ? characterMetaById[String(characterId)] : undefined;
+                            const unisonMeta = unisonId > 0 ? characterMetaById[String(unisonId)] : undefined;
+                            const equipmentMeta = equipmentId > 0 ? itemMetaById[String(equipmentId)] : undefined;
+                            const soulMeta = soulId > 0 ? itemMetaById[String(soulId)] : undefined;
+
+                            const characterName =
+                              characterMeta?.nameEN ||
+                              characterMeta?.nameJP ||
+                              (characterId > 0 ? `Character ${characterId}` : 'No main');
+                            const unisonName =
+                              unisonMeta?.nameEN ||
+                              unisonMeta?.nameJP ||
+                              (unisonId > 0 ? `Character ${unisonId}` : 'No unison');
+                            const equipmentName =
+                              equipmentMeta?.name || (equipmentId > 0 ? `Equipment ${equipmentId}` : 'No equipment');
+                            const soulName = soulMeta?.name || (soulId > 0 ? `Soul ${soulId}` : 'No soul');
+
+                            const characterThumbUrls = characterMeta ? buildCharacterThumbUrls(characterMeta.faceCode) : [];
+                            const unisonThumbUrls = unisonMeta ? buildCharacterThumbUrls(unisonMeta.faceCode) : [];
+                            const equipmentThumbUrls = [
+                              toCdnUrl(equipmentMeta?.thumbnail || ''),
+                              toCdnUrl(equipmentMeta?.icon || ''),
+                            ].filter(Boolean);
+                            const soulThumbUrls = [toCdnUrl(soulMeta?.thumbnail || ''), toCdnUrl(soulMeta?.icon || '')].filter(Boolean);
+
+                            const slotFields: Array<{
+                              key: PartyPickerField;
+                              kind: PartyPickerKind;
+                              label: string;
+                              name: string;
+                              thumbUrls: string[];
+                              pixelated: boolean;
+                              pickerTitle: string;
+                            }> = [
+                              {
+                                key: 'character_ids',
+                                kind: 'character',
+                                label: 'Main',
+                                name: characterName,
+                                thumbUrls: characterThumbUrls,
+                                pixelated: false,
+                                pickerTitle: `Pick Main Unit - Group ${selectedPartyEntry.groupId} Slot ${selectedPartyEntry.slotId} #${slotIndex + 1}`,
+                              },
+                              {
+                                key: 'unison_character_ids',
+                                kind: 'character',
+                                label: 'Unison',
+                                name: unisonName,
+                                thumbUrls: unisonThumbUrls,
+                                pixelated: false,
+                                pickerTitle: `Pick Unison - Group ${selectedPartyEntry.groupId} Slot ${selectedPartyEntry.slotId} #${slotIndex + 1}`,
+                              },
+                              {
+                                key: 'equipment_ids',
+                                kind: 'equipment',
+                                label: 'Equipment',
+                                name: equipmentName,
+                                thumbUrls: equipmentThumbUrls,
+                                pixelated: true,
+                                pickerTitle: `Pick Equipment - Group ${selectedPartyEntry.groupId} Slot ${selectedPartyEntry.slotId} #${slotIndex + 1}`,
+                              },
+                              {
+                                key: 'ability_soul_ids',
+                                kind: 'equipment',
+                                label: 'Soul',
+                                name: soulName,
+                                thumbUrls: soulThumbUrls,
+                                pixelated: true,
+                                pickerTitle: `Pick Soul - Group ${selectedPartyEntry.groupId} Slot ${selectedPartyEntry.slotId} #${slotIndex + 1}`,
+                              },
+                            ];
+
+                            return (
+                              <div key={slotIndex} className='rounded-lg border border-border/70 bg-background/60 p-2'>
+                                <p className='mb-2 text-[10px] uppercase text-muted-foreground'>Slot {slotIndex + 1}</p>
+                                <div className='space-y-1.5'>
+                                  {slotFields.map((field) => (
+                                    <div key={field.key} className='space-y-1'>
+                                      <p className='text-[10px] uppercase text-muted-foreground'>{field.label}</p>
+                                      <button
+                                        type='button'
+                                        className='flex w-full items-center justify-center rounded-md border border-border/60 bg-background/85 p-1.5 text-left transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60'
+                                        onClick={() =>
+                                          openPartyPicker(
+                                            selectedPartyEntry.groupId,
+                                            selectedPartyEntry.slotId,
+                                            slotIndex,
+                                            field.key,
+                                            field.kind,
+                                            field.pickerTitle
+                                          )
+                                        }
+                                        title={field.name}
+                                        disabled={!saveDocument}
+                                      >
+                                        <AssetThumb urls={field.thumbUrls} alt={field.name} size={36} pixelated={field.pixelated} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className='flex flex-wrap items-center justify-between gap-2'>
+                          <label className='flex items-center gap-2 text-xs text-muted-foreground'>
+                            <input
+                              type='checkbox'
+                              checked={Boolean(selectedPartyEntry.value.edited)}
+                              onChange={(event) =>
+                                setPartySlotEdited(selectedPartyEntry.groupId, selectedPartyEntry.slotId, event.target.checked)
+                              }
+                              disabled={!saveDocument}
+                            />
+                            Edited
+                          </label>
+                          <div className='flex flex-wrap items-center gap-2'>
+                            {selectedPartySlotKey && partyImportSlotKey === selectedPartySlotKey ? (
+                              <div className='flex w-[148px] items-center gap-1'>
+                                <Input
+                                  key={selectedPartySlotKey}
+                                  ref={partyImportInputRef}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                      event.preventDefault();
+                                      confirmPartySlotLinkImport(
+                                        selectedPartyEntry.groupId,
+                                        selectedPartyEntry.slotId,
+                                        event.currentTarget.value
+                                      );
+                                    } else if (event.key === 'Escape') {
+                                      event.preventDefault();
+                                      cancelPartySlotLinkImport();
+                                    }
+                                  }}
+                                  placeholder='Paste link...'
+                                  className='h-8 min-w-0 flex-1 text-[11px]'
+                                  autoFocus
+                                  disabled={!saveDocument}
+                                />
+                                <Button
+                                  variant='outline'
+                                  size='sm'
+                                  onClick={() =>
+                                    confirmPartySlotLinkImport(selectedPartyEntry.groupId, selectedPartyEntry.slotId)
                                   }
-                                }}
-                                placeholder='Paste link...'
-                                className='h-8 min-w-0 flex-1 text-[11px]'
-                                autoFocus
-                                disabled={!saveDocument}
-                              />
+                                  className='h-8 w-8 px-0'
+                                  disabled={!saveDocument}
+                                  title='Confirm import'
+                                >
+                                  <CheckCircle2 className='h-4 w-4 text-emerald-400' />
+                                </Button>
+                              </div>
+                            ) : (
                               <Button
                                 variant='outline'
                                 size='sm'
-                                onClick={() => confirmPartySlotLinkImport(entry.groupId, entry.slotId)}
-                                className='h-8 w-8 px-0'
+                                onClick={() => startPartySlotLinkImport(selectedPartyEntry.groupId, selectedPartyEntry.slotId)}
+                                className='w-[148px]'
                                 disabled={!saveDocument}
-                                title='Confirm import'
                               >
-                                <CheckCircle2 className='h-4 w-4 text-emerald-400' />
+                                Import From Link
                               </Button>
-                            </div>
-                          ) : (
+                            )}
                             <Button
                               variant='outline'
                               size='sm'
-                              onClick={() => startPartySlotLinkImport(entry.groupId, entry.slotId)}
-                              className='w-[148px]'
+                              onClick={() => sharePartySlotAsLink(selectedPartyEntry.groupId, selectedPartyEntry.slotId)}
                               disabled={!saveDocument}
                             >
-                              Import From Link
+                              {selectedPartySlotKey && partyShareFeedbackKey === selectedPartySlotKey ? (
+                                <>
+                                  <CheckCircle2 className='mr-1 h-4 w-4 text-emerald-400' />
+                                  Copied
+                                </>
+                              ) : (
+                                'Share'
+                              )}
                             </Button>
-                          )}
-                          <Button
-                            variant='outline'
-                            size='sm'
-                            onClick={() => sharePartySlotAsLink(entry.groupId, entry.slotId)}
-                            disabled={!saveDocument}
-                          >
-                            {shareFeedbackVisible ? (
-                              <>
-                                <CheckCircle2 className='mr-1 h-4 w-4 text-emerald-400' />
-                                Copied
-                              </>
-                            ) : (
-                              'Share'
-                            )}
-                          </Button>
-                          <Button
-                            variant='outline'
-                            size='sm'
-                            onClick={() => clearPartySlot(entry.groupId, entry.slotId)}
-                            disabled={!saveDocument}
-                          >
-                            Clear Slot
-                          </Button>
+                            <Button
+                              variant='outline'
+                              size='sm'
+                              onClick={() => clearPartySlot(selectedPartyEntry.groupId, selectedPartyEntry.slotId)}
+                              disabled={!saveDocument}
+                            >
+                              Clear Slot
+                            </Button>
+                          </div>
                         </div>
                       </div>
+                    </>
+                  ) : (
+                    <div className='rounded-md border border-dashed p-4 text-sm text-muted-foreground'>
+                      Party slot data is unavailable for this team.
                     </div>
-                  );
-                })}
-
-                {visiblePartyEntries.length === 0 && (
-                  <div className='rounded-md border border-dashed p-4 text-sm text-muted-foreground'>
-                    No party slots found in this save.
-                  </div>
-                )}
-              </div>
-
-              <div className='flex items-center justify-between'>
-                <p className='text-sm text-muted-foreground'>
-                  Showing page {partyPage} / {partyTotalPages} ({filteredPartyEntries.length} matches)
-                </p>
-                <div className='flex gap-2'>
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    onClick={() => setPartyPage((page) => Math.max(1, page - 1))}
-                    disabled={partyPage <= 1}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    onClick={() => setPartyPage((page) => Math.min(partyTotalPages, page + 1))}
-                    disabled={partyPage >= partyTotalPages}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-
+                  )}
+                </DialogContent>
+              </Dialog>
               <Dialog open={Boolean(partyPicker)} onOpenChange={(open) => !open && closePartyPicker()}>
                 <DialogContent className='max-h-[92vh] overflow-y-auto sm:max-w-4xl'>
                   {partyPicker && (
@@ -7863,5 +8121,23 @@ export default function SaveEditorPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function SaveEditorPageFallback() {
+  return (
+    <div className='mx-auto flex w-full max-w-[1800px] flex-col gap-4 p-4 md:p-6'>
+      <div className='h-10 w-48 animate-pulse rounded-md bg-muted/30' />
+      <div className='h-24 animate-pulse rounded-lg border border-border/60 bg-background/70' />
+      <div className='h-[50vh] animate-pulse rounded-lg border border-border/60 bg-background/70' />
+    </div>
+  );
+}
+
+export default function SaveEditorPage() {
+  return (
+    <Suspense fallback={<SaveEditorPageFallback />}>
+      <SaveEditorPageClient />
+    </Suspense>
   );
 }

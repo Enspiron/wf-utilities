@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-
-const IS_PRODUCTION = process.env.VERCEL === '1';
-const GITHUB_RAW_URL = 'https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data';
+import { IS_PRODUCTION, DATA_CDN_BASE as GITHUB_RAW_URL, DATA_CACHE_HEADERS } from '@/lib/data-source';
 
 const toStringArray = (value: unknown): string[] => {
   if (Array.isArray(value)) {
@@ -53,7 +51,7 @@ export async function GET(request: Request) {
           { status: 404 }
         );
       }
-      return NextResponse.json({ files });
+      return NextResponse.json({ files }, { headers: DATA_CACHE_HEADERS });
     }
 
     const fs = await import('fs');
@@ -83,7 +81,7 @@ export async function GET(request: Request) {
 
     walk(baseDir);
 
-    return NextResponse.json({ files });
+    return NextResponse.json({ files }, { headers: DATA_CACHE_HEADERS });
   } catch (err) {
     console.error('Error listing quest files:', err);
     return NextResponse.json({ error: 'Failed to list quest files' }, { status: 500 });

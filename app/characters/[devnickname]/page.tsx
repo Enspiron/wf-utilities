@@ -152,7 +152,7 @@ const getAttributeIcon = (attr: string) => {
     Light: 'white',
     Dark: 'black',
   };
-  return `/FilterIcons/elements/element_${map[attr] || attr.toLowerCase()}_medium.png`;
+  return `/FilterIcons/elements/round_ability_${map[attr] || attr.toLowerCase()}.png`;
 };
 
 const getWeaponTypeIcon = (type: string) => {

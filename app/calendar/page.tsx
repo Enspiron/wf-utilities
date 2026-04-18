@@ -664,9 +664,10 @@ function EventImageGallery({ event }: { event: CalendarEvent }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
 
-  useEffect(() => {
+  const openPreview = (url: string) => {
     setPreviewFailed(false);
-  }, [previewUrl]);
+    setPreviewUrl(url);
+  };
 
   const visibleImages = imageCandidates.filter((url) => !failedUrls.has(url));
   const failedList = imageCandidates.filter((url) => failedUrls.has(url));
@@ -685,7 +686,7 @@ function EventImageGallery({ event }: { event: CalendarEvent }) {
                 <div key={url} className='rounded-md border p-2'>
                   <button
                     type='button'
-                    onClick={() => setPreviewUrl(url)}
+                    onClick={() => openPreview(url)}
                     className='mb-2 block w-full rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary'
                     title='Open larger preview'
                   >

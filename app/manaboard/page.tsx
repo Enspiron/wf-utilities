@@ -104,13 +104,9 @@ type SafeImageProps = Omit<ComponentProps<typeof Image>, 'src' | 'alt'> & {
 };
 
 function SafeImage({ src, alt, fallback, onError, ...props }: SafeImageProps) {
-  const [failed, setFailed] = useState(false);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
-  useEffect(() => {
-    setFailed(false);
-  }, [src]);
-
-  if (!src || failed) return <>{fallback}</>;
+  if (!src || failedSrc === src) return <>{fallback}</>;
 
   return (
     <Image
@@ -118,7 +114,7 @@ function SafeImage({ src, alt, fallback, onError, ...props }: SafeImageProps) {
       src={src}
       alt={alt}
       onError={(event) => {
-        setFailed(true);
+        setFailedSrc(src);
         onError?.(event);
       }}
     />

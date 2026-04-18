@@ -1,6 +1,6 @@
 'use client';
 
-import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
@@ -88,15 +88,11 @@ function ItemArtwork({
   className?: string;
   iconClassName?: string;
 }) {
-  const candidates = useMemo(() => getImageCandidates(item), [item.icon, item.thumbnail]);
-  const candidateKey = candidates.join('|');
-  const [candidateIndex, setCandidateIndex] = useState(0);
+  const candidates = useMemo(() => getImageCandidates(item), [item]);
+  const [failedCandidates, setFailedCandidates] = useState<Set<string>>(new Set());
+  const activeCandidate = candidates.find((candidate) => !failedCandidates.has(candidate));
 
-  useEffect(() => {
-    setCandidateIndex(0);
-  }, [candidateKey]);
-
-  if (candidateIndex >= candidates.length) {
+  if (!activeCandidate) {
     return (
       <div className={cn('flex h-full w-full items-center justify-center rounded-md border border-dashed border-border/60', className)}>
         <Package2 className='h-6 w-6 text-muted-foreground' />
@@ -107,13 +103,20 @@ function ItemArtwork({
   return (
     <div className={cn('flex h-full w-full items-center justify-center rounded-md bg-background/40', className)}>
       <Image
-        src={candidates[candidateIndex]}
+        src={activeCandidate}
         alt={item.name}
         width={120}
         height={120}
         className={cn('h-full w-full object-contain [image-rendering:pixelated]', iconClassName)}
         unoptimized={true}
-        onError={() => setCandidateIndex((prev) => prev + 1)}
+        onError={() =>
+          setFailedCandidates((prev) => {
+            if (prev.has(activeCandidate)) return prev;
+            const next = new Set(prev);
+            next.add(activeCandidate);
+            return next;
+          })
+        }
       />
     </div>
   );
@@ -155,8 +158,6 @@ export default function ItemsPage() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError(null);
 
     fetch('/api/items')
       .then((response) => response.json())
@@ -331,16 +332,6 @@ export default function ItemsPage() {
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
   const safePage = Math.min(currentPage, totalPages);
 
-  useLayoutEffect(() => {
-    setCurrentPage((prev) => (prev === 1 ? prev : 1));
-  }, [deferredSearch, onlyWithArtwork, regionFilter, selectedCategories, selectedRarities, sortBy, typeFilter, viewMode]);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
-
   const paginatedItems = useMemo(() => {
     const start = (safePage - 1) * itemsPerPage;
     return filteredItems.slice(start, start + itemsPerPage);
@@ -380,7 +371,40 @@ export default function ItemsPage() {
     return `Showing ${start}-${end} of ${filteredItems.length} results`;
   }, [filteredItems.length, itemsPerPage, safePage]);
 
+  const resetPage = () => setCurrentPage(1);
+
+  const updateSearch = (value: string) => {
+    resetPage();
+    setSearch(value);
+  };
+
+  const updateTypeFilter = (value: ItemTypeFilter) => {
+    resetPage();
+    setTypeFilter(value);
+  };
+
+  const updateRegionFilter = (value: RegionFilter) => {
+    resetPage();
+    setRegionFilter(value);
+  };
+
+  const updateSortBy = (value: SortKey) => {
+    resetPage();
+    setSortBy(value);
+  };
+
+  const updateViewMode = (value: ViewMode) => {
+    resetPage();
+    setViewMode(value);
+  };
+
+  const updateOnlyWithArtwork = (value: boolean | ((current: boolean) => boolean)) => {
+    resetPage();
+    setOnlyWithArtwork(value);
+  };
+
   const clearAllFilters = () => {
+    resetPage();
     setTypeFilter('all');
     setRegionFilter('all');
     setSelectedCategories([]);
@@ -389,18 +413,20 @@ export default function ItemsPage() {
   };
 
   const toggleCategory = (category: string) => {
+    resetPage();
     setSelectedCategories((prev) =>
       prev.includes(category) ? prev.filter((value) => value !== category) : [...prev, category]
     );
   };
 
   const toggleRarity = (rarity: number) => {
+    resetPage();
     setSelectedRarities((prev) =>
       prev.includes(rarity) ? prev.filter((value) => value !== rarity) : [...prev, rarity]
     );
   };
 
-  const FilterPanel = ({ mobile = false }: { mobile?: boolean }) => (
+  const renderFilterPanel = (mobile = false) => (
     <div className='space-y-3'>
       <div className='space-y-2 rounded-md border border-border/60 bg-muted/20 p-2.5'>
         <p className='text-xs font-semibold uppercase tracking-wide text-muted-foreground'>Type</p>
@@ -416,7 +442,7 @@ export default function ItemsPage() {
               size='sm'
               variant={typeFilter === option.key ? 'default' : 'outline'}
               className='h-8 text-xs'
-              onClick={() => setTypeFilter(option.key)}
+              onClick={() => updateTypeFilter(option.key)}
             >
               {option.label}
             </Button>
@@ -438,7 +464,7 @@ export default function ItemsPage() {
               size='sm'
               variant={regionFilter === option.key ? 'default' : 'outline'}
               className='h-8 text-xs'
-              onClick={() => setRegionFilter(option.key)}
+              onClick={() => updateRegionFilter(option.key)}
               disabled={option.key !== 'all' && (option.key === 'gl' ? regionCounts.gl : regionCounts.ja) === 0}
             >
               {option.label}
@@ -478,7 +504,15 @@ export default function ItemsPage() {
         <div className='flex items-center justify-between'>
           <p className='text-xs font-semibold uppercase tracking-wide text-muted-foreground'>Category</p>
           {selectedCategories.length > 0 && (
-            <Button variant='ghost' size='sm' className='h-7 px-2 text-xs' onClick={() => setSelectedCategories([])}>
+            <Button
+              variant='ghost'
+              size='sm'
+              className='h-7 px-2 text-xs'
+              onClick={() => {
+                resetPage();
+                setSelectedCategories([]);
+              }}
+            >
               Clear
             </Button>
           )}
@@ -513,7 +547,7 @@ export default function ItemsPage() {
           type='button'
           variant={onlyWithArtwork ? 'default' : 'outline'}
           className='h-8 w-full justify-start text-xs'
-          onClick={() => setOnlyWithArtwork((prev) => !prev)}
+          onClick={() => updateOnlyWithArtwork((prev) => !prev)}
         >
           <Sparkles className='mr-2 h-3.5 w-3.5' />
           Has artwork only
@@ -539,7 +573,14 @@ export default function ItemsPage() {
           </CardHeader>
           <CardContent className='space-y-4'>
             <p className='text-sm text-muted-foreground'>{error}</p>
-            <Button variant='outline' onClick={() => setReloadToken((prev) => prev + 1)}>
+            <Button
+              variant='outline'
+              onClick={() => {
+                setLoading(true);
+                setError(null);
+                setReloadToken((prev) => prev + 1);
+              }}
+            >
               <RefreshCw className='mr-2 h-4 w-4' />
               Retry
             </Button>
@@ -558,7 +599,7 @@ export default function ItemsPage() {
               variant={typeFilter === 'all' ? 'default' : 'ghost'}
               size='sm'
               className='h-8 px-3 text-xs'
-              onClick={() => setTypeFilter('all')}
+              onClick={() => updateTypeFilter('all')}
             >
               All
             </Button>
@@ -566,7 +607,7 @@ export default function ItemsPage() {
               variant={typeFilter === 'item' ? 'default' : 'ghost'}
               size='sm'
               className='h-8 px-3 text-xs'
-              onClick={() => setTypeFilter('item')}
+              onClick={() => updateTypeFilter('item')}
             >
               Items
             </Button>
@@ -574,7 +615,7 @@ export default function ItemsPage() {
               variant={typeFilter === 'equipment' ? 'default' : 'ghost'}
               size='sm'
               className='h-8 px-3 text-xs'
-              onClick={() => setTypeFilter('equipment')}
+              onClick={() => updateTypeFilter('equipment')}
             >
               Equip
             </Button>
@@ -584,14 +625,14 @@ export default function ItemsPage() {
             <Search className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
             <Input
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => updateSearch(event.target.value)}
               placeholder='Search by name, ID, devname...'
               className='h-10 pl-9 pr-9'
             />
             {search && (
               <button
                 type='button'
-                onClick={() => setSearch('')}
+                onClick={() => updateSearch('')}
                 className='absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-1 text-muted-foreground transition hover:bg-accent hover:text-foreground'
                 aria-label='Clear search'
               >
@@ -600,7 +641,7 @@ export default function ItemsPage() {
             )}
           </div>
 
-          <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortKey)}>
+          <Select value={sortBy} onValueChange={(value) => updateSortBy(value as SortKey)}>
             <SelectTrigger className='order-2 h-10 min-w-[170px] md:order-3 md:min-w-[210px]'>
               <ArrowUpDown className='mr-2 h-4 w-4' />
               <SelectValue placeholder='Sort by' />
@@ -633,7 +674,7 @@ export default function ItemsPage() {
             <Button
               variant={viewMode === 'grid' ? 'default' : 'ghost'}
               size='sm'
-              onClick={() => setViewMode('grid')}
+              onClick={() => updateViewMode('grid')}
               className='h-8 w-9 p-0'
             >
               <Grid3x3 className='h-4 w-4' />
@@ -641,7 +682,7 @@ export default function ItemsPage() {
             <Button
               variant={viewMode === 'list' ? 'default' : 'ghost'}
               size='sm'
-              onClick={() => setViewMode('list')}
+              onClick={() => updateViewMode('list')}
               className='h-8 w-9 p-0'
             >
               <List className='h-4 w-4' />
@@ -655,7 +696,7 @@ export default function ItemsPage() {
             {typeFilter !== 'all' && (
               <button
                 type='button'
-                onClick={() => setTypeFilter('all')}
+                onClick={() => updateTypeFilter('all')}
                 className='inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground'
               >
                 Type: {typeFilter}
@@ -665,7 +706,7 @@ export default function ItemsPage() {
             {regionFilter !== 'all' && (
               <button
                 type='button'
-                onClick={() => setRegionFilter('all')}
+                onClick={() => updateRegionFilter('all')}
                 className='inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground'
               >
                 Region: {regionFilter === 'ja' ? 'JP Exclusive' : 'GL'}
@@ -675,7 +716,7 @@ export default function ItemsPage() {
             {onlyWithArtwork && (
               <button
                 type='button'
-                onClick={() => setOnlyWithArtwork(false)}
+                onClick={() => updateOnlyWithArtwork(false)}
                 className='inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground'
               >
                 Artwork only
@@ -736,14 +777,14 @@ export default function ItemsPage() {
               <Search className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
               <Input
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => updateSearch(event.target.value)}
                 placeholder='Search by name, ID, devname...'
                 className='h-10 pl-9 pr-9'
               />
               {search && (
                 <button
                   type='button'
-                  onClick={() => setSearch('')}
+                  onClick={() => updateSearch('')}
                   className='absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-1 text-muted-foreground transition hover:bg-accent hover:text-foreground'
                   aria-label='Clear search'
                 >
@@ -763,7 +804,7 @@ export default function ItemsPage() {
           </div>
 
           <ScrollArea className='min-h-0 flex-1 px-3 py-3'>
-            <FilterPanel />
+            {renderFilterPanel()}
           </ScrollArea>
         </aside>
 
@@ -774,7 +815,14 @@ export default function ItemsPage() {
                 <Package2 className='mx-auto mb-4 h-12 w-12 text-muted-foreground' />
                 <p className='text-muted-foreground'>No items found</p>
                 {(activeFilterCount > 0 || search) && (
-                  <Button variant='link' onClick={() => { clearAllFilters(); setSearch(''); }} className='mt-2'>
+                  <Button
+                    variant='link'
+                    onClick={() => {
+                      clearAllFilters();
+                      updateSearch('');
+                    }}
+                    className='mt-2'
+                  >
                     Clear all filters and search
                   </Button>
                 )}
@@ -887,7 +935,7 @@ export default function ItemsPage() {
           </SheetHeader>
           <div className='h-[calc(100%-4rem)] px-4 py-4'>
             <ScrollArea className='h-full pr-3'>
-              <FilterPanel mobile={true} />
+              {renderFilterPanel(true)}
               <Button type='button' className='mt-4 w-full' onClick={() => setMobileFilterOpen(false)}>
                 Apply Filters
               </Button>

@@ -77,6 +77,14 @@ const TOOL_CARDS: ToolCard[] = [
     tone: 'from-fuchsia-500/15 to-fuchsia-500/5 border-fuchsia-500/30',
   },
   {
+    href: '/feature-timeline',
+    title: 'Feature Timeline',
+    description: 'Track home banners, announcements, and guide dialogs across the EN/JP timeline.',
+    icon: Compass,
+    keywords: ['feature', 'timeline', 'banner', 'announcement', 'guide dialog'],
+    tone: 'from-blue-500/15 to-blue-500/5 border-blue-500/30',
+  },
+  {
     href: '/orderedmap',
     title: 'OrderedMap Explorer',
     description: 'Navigate the full datalist tree and inspect category/file payloads.',
@@ -220,45 +228,24 @@ export default function HomeCommandCenter() {
 
     setSnapshotError(null);
     try {
-      const [orderedmapRes, questRes, itemsRes, musicRes] = await Promise.all([
-        fetch('/api/orderedmap/list?lang=en', { cache: 'no-store' }),
-        fetch('/api/quests/list?lang=en', { cache: 'no-store' }),
-        fetch('/api/items', { cache: 'no-store' }),
-        fetch('/api/music', { cache: 'no-store' }),
-      ]);
-
-      if (!orderedmapRes.ok || !questRes.ok || !itemsRes.ok || !musicRes.ok) {
-        throw new Error('One or more data endpoints failed.');
+      // Single aggregated endpoint replaces the 4 parallel browser fetches.
+      // `cache: 'no-store'` only on explicit refresh — otherwise let the
+      // browser/CDN serve the cached snapshot.
+      const response = await fetch('/api/snapshot', isRefresh ? { cache: 'no-store' } : undefined);
+      if (!response.ok) {
+        throw new Error('Snapshot endpoint failed.');
       }
 
-      const [orderedmapJson, questJson, itemsJson, musicJson] = await Promise.all([
-        orderedmapRes.json() as Promise<{ categories?: unknown[]; filesByCategory?: Record<string, unknown> }>,
-        questRes.json() as Promise<{ files?: unknown[] }>,
-        itemsRes.json() as Promise<{ count?: number; items?: unknown[] }>,
-        musicRes.json() as Promise<{ count?: number; tracks?: unknown[] }>,
-      ]);
-
-      const filesByCategory = orderedmapJson.filesByCategory || {};
-      const orderedmapFiles = Object.values(filesByCategory).reduce<number>((total, files) => {
-        return total + (Array.isArray(files) ? files.length : 0);
-      }, 0);
+      const json = (await response.json()) as Partial<SnapshotState> & { generatedAt?: string };
 
       setSnapshot({
-        orderedmapCategories: Array.isArray(orderedmapJson.categories) ? orderedmapJson.categories.length : 0,
-        orderedmapFiles,
-        questFiles: Array.isArray(questJson.files) ? questJson.files.length : 0,
-        itemEntries: typeof itemsJson.count === 'number'
-          ? itemsJson.count
-          : Array.isArray(itemsJson.items)
-            ? itemsJson.items.length
-            : 0,
-        musicTracks: typeof musicJson.count === 'number'
-          ? musicJson.count
-          : Array.isArray(musicJson.tracks)
-            ? musicJson.tracks.length
-            : 0,
+        orderedmapCategories: json.orderedmapCategories ?? 0,
+        orderedmapFiles: json.orderedmapFiles ?? 0,
+        questFiles: json.questFiles ?? 0,
+        itemEntries: json.itemEntries ?? 0,
+        musicTracks: json.musicTracks ?? 0,
       });
-      setLastUpdated(new Date());
+      setLastUpdated(json.generatedAt ? new Date(json.generatedAt) : new Date());
     } catch {
       setSnapshotError('Could not load live snapshot data.');
     } finally {

@@ -1,14 +1,27 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AudioPlayer from "@/components/AudioPlayer";
 import { parseOrderedMapJson, ParsedItem } from "@/lib/json-parser";
-import { ExternalLink, ImageOff, Loader2, Search, Sparkles } from "lucide-react";
+import {
+  Copy,
+  ExternalLink,
+  Grid3X3,
+  ImageOff,
+  LayoutList,
+  Loader2,
+  Search,
+  Sparkles,
+  Star,
+  WandSparkles,
+} from "lucide-react";
 import Image from "next/image";
 
 const MODE_OPTIONS = [
@@ -19,7 +32,12 @@ const MODE_OPTIONS = [
 ] as const;
 
 type QuestMode = (typeof MODE_OPTIONS)[number]["value"];
-const ITEMS_PER_PAGE = 48;
+type ViewMode = "grid" | "list";
+type SortMode = "name_asc" | "name_desc" | "id_asc" | "id_desc" | "source_asc" | "source_desc";
+
+const ITEMS_PER_PAGE = 60;
+const SETTINGS_KEY = "quests-v2-settings";
+const FAVORITES_KEY = "quests-v2-favorites";
 
 const CDN_ROOT = "https://wfjukebox.b-cdn.net";
 const MUSIC_CDN_ROOT = "https://wfjukebox.b-cdn.net/music";
@@ -166,20 +184,26 @@ const collectBgmPaths = (value: unknown, out: Set<string>) => {
 
 const getImageCandidates = (item: ParsedItem) => {
   const rawCandidates: string[] = [];
+  const sourceFile = getSourceFile(item);
+  const normalizedSourceFile = normalizeAssetPath(sourceFile);
   if (item.imageUrl) rawCandidates.push(item.imageUrl);
 
   const field2 = typeof item.data.field_2 === "string" ? item.data.field_2 : "";
   const field1 = typeof item.data.field_1 === "string" ? item.data.field_1 : "";
-  if (field2) rawCandidates.push(field2);
-  if (field1) rawCandidates.push(field1);
+  if (field2 && isLikelyImagePath(field2)) rawCandidates.push(field2);
+  if (field1 && isLikelyImagePath(field1)) rawCandidates.push(field1);
 
   const directoryLikeValues = new Set<string>();
-  collectDirectoryLikeStrings(item.data, directoryLikeValues);
+  const dataWithoutInternalMeta = Object.fromEntries(
+    Object.entries(item.data).filter(([key]) => !key.startsWith("_"))
+  );
+  collectDirectoryLikeStrings(dataWithoutInternalMeta, directoryLikeValues);
   for (const pathValue of directoryLikeValues) {
     if (isLikelyImagePath(pathValue)) rawCandidates.push(pathValue);
   }
 
-  for (const value of Object.values(item.data)) {
+  for (const [key, value] of Object.entries(item.data)) {
+    if (key.startsWith("_")) continue;
     if (typeof value === "string" && isLikelyImagePath(value)) rawCandidates.push(value);
   }
 
@@ -191,6 +215,7 @@ const getImageCandidates = (item: ParsedItem) => {
       continue;
     }
     const normalized = normalizeAssetPath(candidate);
+    if (normalized === normalizedSourceFile) continue;
     urls.add(buildImageUrl(normalized));
     const alternate = toAlternateAssetPath(normalized);
     if (alternate) urls.add(buildImageUrl(alternate));
@@ -209,6 +234,38 @@ const getBgmCandidates = (item: ParsedItem) => {
     }
   }
   return [...urls];
+};
+
+const questKey = (item: ParsedItem) => `${item.id}::${getSourceFile(item)}`;
+
+const encodeStateToUrl = (settings: {
+  search: string;
+  mode: QuestMode;
+  sourceFilter: string;
+  sortMode: SortMode;
+  viewMode: ViewMode;
+  containsBgmOnly: boolean;
+  containsImageOnly: boolean;
+  missingBgmOnly: boolean;
+  missingImageOnly: boolean;
+  favoritesOnly: boolean;
+  groupBySource: boolean;
+  page: number;
+}) => {
+  const params = new URLSearchParams();
+  if (settings.search.trim()) params.set("q", settings.search.trim());
+  if (settings.mode !== "all") params.set("mode", settings.mode);
+  if (settings.sourceFilter !== "all") params.set("source", settings.sourceFilter);
+  if (settings.sortMode !== "name_asc") params.set("sort", settings.sortMode);
+  if (settings.viewMode !== "grid") params.set("view", settings.viewMode);
+  if (settings.containsBgmOnly) params.set("bgm", "1");
+  if (settings.containsImageOnly) params.set("img", "1");
+  if (settings.missingBgmOnly) params.set("mbgm", "1");
+  if (settings.missingImageOnly) params.set("mimg", "1");
+  if (settings.favoritesOnly) params.set("fav", "1");
+  if (settings.groupBySource) params.set("group", "1");
+  if (settings.page > 1) params.set("page", String(settings.page));
+  return params.toString();
 };
 
 function MissingImagePlaceholder({ compact = false }: { compact?: boolean }) {
@@ -259,9 +316,10 @@ function QuestImageGallery({ item }: { item: ParsedItem }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
 
-  useEffect(() => {
+  const openPreview = (url: string) => {
     setPreviewFailed(false);
-  }, [previewUrl]);
+    setPreviewUrl(url);
+  };
 
   const visibleCandidates = candidates.filter((url) => !failedUrls.has(url));
   if (candidates.length === 0) return null;
@@ -278,7 +336,7 @@ function QuestImageGallery({ item }: { item: ParsedItem }) {
             <button
               key={url}
               type="button"
-              onClick={() => setPreviewUrl(url)}
+              onClick={() => openPreview(url)}
               className="overflow-hidden rounded-md border bg-background/80 p-1 text-left transition hover:border-primary/40"
               title="Open large preview"
             >
@@ -367,7 +425,8 @@ function QuestAudio({ item }: { item: ParsedItem }) {
   );
 }
 
-export default function QuestViewerPage() {
+export default function QuestViewerV2Page() {
+  const searchRef = useRef<HTMLInputElement | null>(null);
   const [mode, setMode] = useState<QuestMode>("all");
   const [items, setItems] = useState<ParsedItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -375,9 +434,113 @@ export default function QuestViewerPage() {
   const [search, setSearch] = useState("");
   const [containsBgmOnly, setContainsBgmOnly] = useState(false);
   const [containsImageOnly, setContainsImageOnly] = useState(false);
+  const [missingBgmOnly, setMissingBgmOnly] = useState(false);
+  const [missingImageOnly, setMissingImageOnly] = useState(false);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [sortMode, setSortMode] = useState<SortMode>("name_asc");
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [groupBySource, setGroupBySource] = useState(false);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [jumpQuery, setJumpQuery] = useState("");
+  const [copiedShare, setCopiedShare] = useState(false);
+  const [copiedIds, setCopiedIds] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ParsedItem | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const resultsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    try {
+      const rawFavorites = localStorage.getItem(FAVORITES_KEY);
+      if (rawFavorites) {
+        const parsed = JSON.parse(rawFavorites) as string[];
+        if (Array.isArray(parsed)) {
+          setFavorites(new Set(parsed));
+        }
+      }
+    } catch {
+      // Ignore invalid localStorage payloads.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const rawSettings = localStorage.getItem(SETTINGS_KEY);
+      const parsed = rawSettings ? (JSON.parse(rawSettings) as Record<string, unknown>) : {};
+      const fromUrl = new URLSearchParams(window.location.search);
+      const parseBool = (key: string) => fromUrl.get(key) === "1" || fromUrl.get(key) === "true";
+
+      const merged = {
+        mode: (fromUrl.get("mode") ?? parsed.mode ?? "all") as QuestMode,
+        search: (fromUrl.get("q") ?? parsed.search ?? "") as string,
+        sourceFilter: (fromUrl.get("source") ?? parsed.sourceFilter ?? "all") as string,
+        sortMode: (fromUrl.get("sort") ?? parsed.sortMode ?? "name_asc") as SortMode,
+        viewMode: (fromUrl.get("view") ?? parsed.viewMode ?? "grid") as ViewMode,
+        containsBgmOnly: fromUrl.has("bgm") ? parseBool("bgm") : Boolean(parsed.containsBgmOnly),
+        containsImageOnly: fromUrl.has("img") ? parseBool("img") : Boolean(parsed.containsImageOnly),
+        missingBgmOnly: fromUrl.has("mbgm") ? parseBool("mbgm") : Boolean(parsed.missingBgmOnly),
+        missingImageOnly: fromUrl.has("mimg") ? parseBool("mimg") : Boolean(parsed.missingImageOnly),
+        favoritesOnly: fromUrl.has("fav") ? parseBool("fav") : Boolean(parsed.favoritesOnly),
+        groupBySource: fromUrl.has("group") ? parseBool("group") : Boolean(parsed.groupBySource),
+        page: Number.parseInt((fromUrl.get("page") ?? String(parsed.currentPage ?? 1)), 10),
+      };
+
+      if (MODE_OPTIONS.some((m) => m.value === merged.mode)) setMode(merged.mode);
+      if (typeof merged.search === "string") setSearch(merged.search);
+      if (typeof merged.sourceFilter === "string") setSourceFilter(merged.sourceFilter);
+      if (["name_asc", "name_desc", "id_asc", "id_desc", "source_asc", "source_desc"].includes(merged.sortMode)) {
+        setSortMode(merged.sortMode);
+      }
+      if (merged.viewMode === "grid" || merged.viewMode === "list") setViewMode(merged.viewMode);
+      setContainsBgmOnly(merged.containsBgmOnly);
+      setContainsImageOnly(merged.containsImageOnly);
+      setMissingBgmOnly(merged.missingBgmOnly);
+      setMissingImageOnly(merged.missingImageOnly);
+      setFavoritesOnly(merged.favoritesOnly);
+      setGroupBySource(merged.groupBySource);
+      setCurrentPage(Number.isFinite(merged.page) && merged.page > 0 ? merged.page : 1);
+    } catch {
+      // Ignore invalid storage/query values.
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(favorites)));
+  }, [favorites]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      SETTINGS_KEY,
+      JSON.stringify({
+        mode,
+        search,
+        sourceFilter,
+        sortMode,
+        viewMode,
+        containsBgmOnly,
+        containsImageOnly,
+        missingBgmOnly,
+        missingImageOnly,
+        favoritesOnly,
+        groupBySource,
+        currentPage,
+      })
+    );
+  }, [
+    mode,
+    search,
+    sourceFilter,
+    sortMode,
+    viewMode,
+    containsBgmOnly,
+    containsImageOnly,
+    missingBgmOnly,
+    missingImageOnly,
+    favoritesOnly,
+    groupBySource,
+    currentPage,
+  ]);
 
   const loadQuests = useCallback(async () => {
     setLoading(true);
@@ -431,35 +594,66 @@ export default function QuestViewerPage() {
     if (!stillExists) setSelectedItem(null);
   }, [items, selectedItem]);
 
-  const bgmLookup = useMemo(() => {
-    const map = new Map<string, boolean>();
+  const assetSummary = useMemo(() => {
+    const map = new Map<string, { hasBgm: boolean; hasImage: boolean; bgmCount: number; imageCount: number }>();
     for (const item of items) {
-      const key = `${item.id}::${getSourceFile(item)}`;
-      map.set(key, getBgmCandidates(item).length > 0);
+      const key = questKey(item);
+      const bgmCount = getBgmCandidates(item).length;
+      const imageCount = getImageCandidates(item).length;
+      map.set(key, {
+        hasBgm: bgmCount > 0,
+        hasImage: imageCount > 0,
+        bgmCount,
+        imageCount,
+      });
     }
     return map;
   }, [items]);
 
-  const imageLookup = useMemo(() => {
-    const map = new Map<string, boolean>();
-    for (const item of items) {
-      const key = `${item.id}::${getSourceFile(item)}`;
-      map.set(key, getImageCandidates(item).length > 0);
-    }
-    return map;
-  }, [items]);
+  const sourceOptions = useMemo(
+    () => Array.from(new Set(items.map((item) => getSourceFile(item)))).sort((a, b) => a.localeCompare(b)),
+    [items]
+  );
 
   const filteredItems = useMemo(() => {
     const filtered = items.filter((item) => {
       if (!matchesSearch(item, search)) return false;
       if (!matchesMode(item, mode)) return false;
-      const key = `${item.id}::${getSourceFile(item)}`;
-      if (containsBgmOnly && bgmLookup.get(key) !== true) return false;
-      if (containsImageOnly && imageLookup.get(key) !== true) return false;
+      const sourceFile = getSourceFile(item);
+      if (sourceFilter !== "all" && sourceFile !== sourceFilter) return false;
+      const key = questKey(item);
+      const summary = assetSummary.get(key);
+      if (containsBgmOnly && !summary?.hasBgm) return false;
+      if (containsImageOnly && !summary?.hasImage) return false;
+      if (missingBgmOnly && summary?.hasBgm) return false;
+      if (missingImageOnly && summary?.hasImage) return false;
+      if (favoritesOnly && !favorites.has(key)) return false;
       return true;
     });
-    return filtered.sort((a, b) => a.label.localeCompare(b.label));
-  }, [items, search, mode, containsBgmOnly, containsImageOnly, bgmLookup, imageLookup]);
+
+    filtered.sort((a, b) => {
+      if (sortMode === "name_asc") return a.label.localeCompare(b.label);
+      if (sortMode === "name_desc") return b.label.localeCompare(a.label);
+      if (sortMode === "id_asc") return a.id.localeCompare(b.id);
+      if (sortMode === "id_desc") return b.id.localeCompare(a.id);
+      if (sortMode === "source_asc") return getSourceFile(a).localeCompare(getSourceFile(b));
+      return getSourceFile(b).localeCompare(getSourceFile(a));
+    });
+    return filtered;
+  }, [
+    items,
+    search,
+    mode,
+    sourceFilter,
+    containsBgmOnly,
+    containsImageOnly,
+    missingBgmOnly,
+    missingImageOnly,
+    favoritesOnly,
+    sortMode,
+    assetSummary,
+    favorites,
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / ITEMS_PER_PAGE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
@@ -467,6 +661,16 @@ export default function QuestViewerPage() {
     const start = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
     return filteredItems.slice(start, start + ITEMS_PER_PAGE);
   }, [filteredItems, safeCurrentPage]);
+
+  const groupedPaginatedItems = useMemo(() => {
+    const map = new Map<string, ParsedItem[]>();
+    for (const item of paginatedItems) {
+      const source = getSourceFile(item);
+      if (!map.has(source)) map.set(source, []);
+      map.get(source)?.push(item);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [paginatedItems]);
 
   const goToPage = (page: number) => {
     const nextPage = Math.min(Math.max(1, page), totalPages);
@@ -482,6 +686,257 @@ export default function QuestViewerPage() {
     const event = items.filter((item) => getQuestType(getSourceFile(item)) === "event").length;
     return { total: items.length, main, character, event };
   }, [items]);
+
+  const toggleFavorite = useCallback((item: ParsedItem) => {
+    const key = questKey(item);
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const toggleSelection = useCallback((item: ParsedItem) => {
+    const key = questKey(item);
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const selectVisible = useCallback(() => {
+    const visibleKeys = paginatedItems.map((item) => questKey(item));
+    const allSelected = visibleKeys.every((key) => selectedKeys.has(key));
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        visibleKeys.forEach((key) => next.delete(key));
+      } else {
+        visibleKeys.forEach((key) => next.add(key));
+      }
+      return next;
+    });
+  }, [paginatedItems, selectedKeys]);
+
+  const copySelectedIds = useCallback(async () => {
+    const ids = filteredItems
+      .filter((item) => selectedKeys.has(questKey(item)))
+      .map((item) => item.id);
+    if (ids.length === 0) return;
+    await navigator.clipboard.writeText(Array.from(new Set(ids)).join(", "));
+    setCopiedIds(true);
+    window.setTimeout(() => setCopiedIds(false), 1500);
+  }, [filteredItems, selectedKeys]);
+
+  const setSelectedFavoriteState = useCallback((favorite: boolean) => {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      for (const item of filteredItems) {
+        const key = questKey(item);
+        if (!selectedKeys.has(key)) continue;
+        if (favorite) next.add(key);
+        else next.delete(key);
+      }
+      return next;
+    });
+  }, [filteredItems, selectedKeys]);
+
+  const copyShareLink = useCallback(async () => {
+    const query = encodeStateToUrl({
+      search,
+      mode,
+      sourceFilter,
+      sortMode,
+      viewMode,
+      containsBgmOnly,
+      containsImageOnly,
+      missingBgmOnly,
+      missingImageOnly,
+      favoritesOnly,
+      groupBySource,
+      page: safeCurrentPage,
+    });
+    const href = `${window.location.origin}/quests${query ? `?${query}` : ""}`;
+    await navigator.clipboard.writeText(href);
+    setCopiedShare(true);
+    window.setTimeout(() => setCopiedShare(false), 1500);
+  }, [
+    search,
+    mode,
+    sourceFilter,
+    sortMode,
+    viewMode,
+    containsBgmOnly,
+    containsImageOnly,
+    missingBgmOnly,
+    missingImageOnly,
+    favoritesOnly,
+    groupBySource,
+    safeCurrentPage,
+  ]);
+
+  const jumpToMatch = useCallback(() => {
+    const q = jumpQuery.trim().toLowerCase();
+    if (!q) return;
+    const index = filteredItems.findIndex((item) => {
+      if (item.id.toLowerCase() === q) return true;
+      if (item.label.toLowerCase().includes(q)) return true;
+      if (getSourceFile(item).toLowerCase().includes(q)) return true;
+      return false;
+    });
+    if (index < 0) return;
+    const page = Math.floor(index / ITEMS_PER_PAGE) + 1;
+    setCurrentPage(page);
+    setSelectedItem(filteredItems[index]);
+  }, [jumpQuery, filteredItems]);
+
+  const openRandomQuest = useCallback(() => {
+    if (filteredItems.length === 0) return;
+    const index = Math.floor(Math.random() * filteredItems.length);
+    const item = filteredItems[index];
+    const page = Math.floor(index / ITEMS_PER_PAGE) + 1;
+    setCurrentPage(page);
+    setSelectedItem(item);
+  }, [filteredItems]);
+
+  const resetFilters = useCallback(() => {
+    setSearch("");
+    setMode("all");
+    setContainsBgmOnly(false);
+    setContainsImageOnly(false);
+    setMissingBgmOnly(false);
+    setMissingImageOnly(false);
+    setFavoritesOnly(false);
+    setSourceFilter("all");
+    setSortMode("name_asc");
+    setViewMode("grid");
+    setGroupBySource(false);
+    setCurrentPage(1);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const inEditable =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        (target instanceof HTMLElement && target.isContentEditable);
+      if (inEditable) return;
+      if (event.key === "/") {
+        event.preventDefault();
+        searchRef.current?.focus();
+      } else if (event.key.toLowerCase() === "n") {
+        setCurrentPage((prev) => Math.min(totalPages, prev + 1));
+      } else if (event.key.toLowerCase() === "p") {
+        setCurrentPage((prev) => Math.max(1, prev - 1));
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [totalPages]);
+
+  const renderQuestCard = (item: ParsedItem) => {
+    const sourceFile = getSourceFile(item);
+    const type = getQuestType(sourceFile);
+    const key = questKey(item);
+    const summary = assetSummary.get(key);
+    const hasBgm = summary?.hasBgm === true;
+    const hasImage = summary?.hasImage === true;
+    const isSelected = selectedKeys.has(key);
+    const isFavorite = favorites.has(key);
+
+    if (viewMode === "list") {
+      return (
+        <Card key={key} className={`overflow-hidden border ${isSelected ? "border-primary/50" : ""}`}>
+          <CardContent className="flex items-center gap-3 p-3">
+            <button
+              type="button"
+              onClick={() => toggleSelection(item)}
+              className={`h-4 w-4 rounded border ${isSelected ? "border-primary bg-primary" : "border-border bg-background"}`}
+              aria-label="Select quest"
+            />
+            <button
+              type="button"
+              onClick={() => toggleFavorite(item)}
+              className="text-muted-foreground transition hover:text-yellow-300"
+              aria-label={isFavorite ? "Unfavorite quest" : "Favorite quest"}
+            >
+              <Star className={`h-4 w-4 ${isFavorite ? "fill-yellow-300 text-yellow-300" : ""}`} />
+            </button>
+            <div className="flex h-16 w-16 items-center justify-center rounded border bg-muted/20">
+              <QuestImage key={`${item.id}-${sourceFile}-list`} item={item} alt={item.label} width={56} height={56} compact />
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedItem(item)}
+              className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <p className="truncate text-sm font-semibold">{item.label}</p>
+              <p className="truncate text-[11px] text-muted-foreground">{sourceFile}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-1">
+                <Badge variant="outline" className="px-2 py-0 text-[10px] uppercase">{type}</Badge>
+                <Badge variant={hasBgm ? "secondary" : "outline"} className="px-2 py-0 text-[10px] uppercase">{hasBgm ? "BGM" : "No BGM"}</Badge>
+                <Badge variant={hasImage ? "secondary" : "outline"} className="px-2 py-0 text-[10px] uppercase">{hasImage ? "Image" : "No Image"}</Badge>
+              </div>
+            </button>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <Card
+        key={key}
+        className={`group overflow-hidden border transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg ${isSelected ? "border-primary/50" : ""}`}
+      >
+        <CardContent className="p-0">
+          <div className="flex items-center justify-between px-2 pt-2">
+            <button
+              type="button"
+              onClick={() => toggleSelection(item)}
+              className={`h-4 w-4 rounded border ${isSelected ? "border-primary bg-primary" : "border-border bg-background"}`}
+              aria-label="Select quest"
+            />
+            <button
+              type="button"
+              onClick={() => toggleFavorite(item)}
+              className="text-muted-foreground transition hover:text-yellow-300"
+              aria-label={isFavorite ? "Unfavorite quest" : "Favorite quest"}
+            >
+              <Star className={`h-4 w-4 ${isFavorite ? "fill-yellow-300 text-yellow-300" : ""}`} />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelectedItem(item)}
+            className="w-full p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <div className="mb-3 flex h-24 items-center justify-center rounded-md bg-gradient-to-b from-muted/60 to-muted/30">
+              <QuestImage key={`${item.id}-${sourceFile}-card`} item={item} alt={item.label} width={96} height={96} compact />
+            </div>
+
+            <div className="mb-2 flex items-center gap-2">
+              <Badge variant="outline" className="px-2 py-0 text-[10px] uppercase">{type}</Badge>
+              {hasBgm && <Badge variant="secondary" className="px-2 py-0 text-[10px] uppercase">BGM</Badge>}
+              {!hasImage && <Badge variant="outline" className="px-2 py-0 text-[10px] uppercase">No Img</Badge>}
+            </div>
+
+            <p className="mb-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5">{item.label}</p>
+            <p className="mb-3 truncate text-[11px] text-muted-foreground">{sourceFile}</p>
+
+            <div className="flex items-center text-xs text-primary opacity-80 transition group-hover:opacity-100">
+              View details
+              <ExternalLink className="ml-1 h-3 w-3" />
+            </div>
+          </button>
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <div className="h-[calc(100vh-4rem)] overflow-hidden bg-gradient-to-b from-background via-background to-muted/20">
@@ -518,6 +973,34 @@ export default function QuestViewerPage() {
                       <Badge variant="outline" className="max-w-full truncate">
                         {selectedItem.id}
                       </Badge>
+                      <Badge variant="outline">Images: {assetSummary.get(questKey(selectedItem))?.imageCount ?? 0}</Badge>
+                      <Badge variant="outline">BGM: {assetSummary.get(questKey(selectedItem))?.bgmCount ?? 0}</Badge>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(selectedItem.id);
+                        }}
+                      >
+                        <Copy className="mr-1.5 h-3.5 w-3.5" />
+                        Copy ID
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(getSourceFile(selectedItem));
+                        }}
+                      >
+                        <Copy className="mr-1.5 h-3.5 w-3.5" />
+                        Copy Source
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => toggleFavorite(selectedItem)}>
+                        <Star className={`mr-1.5 h-3.5 w-3.5 ${favorites.has(questKey(selectedItem)) ? "fill-yellow-300 text-yellow-300" : ""}`} />
+                        {favorites.has(questKey(selectedItem)) ? "Unfavorite" : "Favorite"}
+                      </Button>
                     </div>
                     <div className="rounded-md border bg-muted/30 p-3 text-sm">
                       <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Source File</p>
@@ -547,10 +1030,11 @@ export default function QuestViewerPage() {
               <div>
                 <h1 className="flex items-center gap-2 text-xl font-bold sm:text-3xl">
                   <Sparkles className="h-5 w-5 text-primary sm:h-6 sm:w-6" />
-                  Quest Viewer
+                  Quest Viewer V2
+                  <Badge variant="outline" className="ml-1">Temporary</Badge>
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Browse, filter, and inspect quest data across story, character, and event files.
+                  Experimental layout with favorites, bulk actions, sorting, source filters, and shareable state.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -558,13 +1042,17 @@ export default function QuestViewerPage() {
                 <Badge variant="secondary">{stats.main} main</Badge>
                 <Badge variant="secondary">{stats.character} character</Badge>
                 <Badge variant="secondary">{stats.event} event</Badge>
+                <Badge variant="outline">{filteredItems.length} filtered</Badge>
+                <Badge variant="outline">{favorites.size} favorites</Badge>
+                <Badge variant="outline">{selectedKeys.size} selected</Badge>
               </div>
             </div>
 
-            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-3">
+            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_240px_auto] md:items-center md:gap-3">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                  ref={searchRef}
                   placeholder="Search quests by name, id, or any field..."
                   value={search}
                   onChange={(e) => {
@@ -574,11 +1062,34 @@ export default function QuestViewerPage() {
                   className="h-10 pl-9"
                 />
               </div>
+              <Select
+                value={sourceFilter}
+                onValueChange={(value) => {
+                  setSourceFilter(value);
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="All source files" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Source Files</SelectItem>
+                  {sourceOptions.map((source) => (
+                    <SelectItem key={source} value={source}>{source}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {loading && (
                 <div className="inline-flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground md:justify-self-end">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading quest files...
                 </div>
+              )}
+              {!loading && (
+                <Button variant="outline" size="sm" className="h-10" onClick={openRandomQuest} disabled={filteredItems.length === 0}>
+                  <WandSparkles className="mr-1.5 h-4 w-4" />
+                  Random
+                </Button>
               )}
             </div>
 
@@ -596,36 +1107,93 @@ export default function QuestViewerPage() {
                     className="rounded-full px-3 sm:px-4"
                   >
                     {option.label}
-                    {option.value === "all" ? ` (${stats.total})` : ""}
-                    {option.value === "main" ? ` (${stats.main})` : ""}
-                    {option.value === "character" ? ` (${stats.character})` : ""}
-                    {option.value === "event" ? ` (${stats.event})` : ""}
                   </Button>
                 ))}
-                <Button
-                  variant={containsBgmOnly ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    setContainsBgmOnly((prev) => !prev);
-                    setCurrentPage(1);
-                  }}
-                  className="rounded-full px-3 sm:px-4"
-                >
-                  Contains BGM
+                <Button variant={containsBgmOnly ? "default" : "outline"} size="sm" className="rounded-full px-3 sm:px-4" onClick={() => { setContainsBgmOnly((prev) => !prev); setCurrentPage(1); }}>
+                  Has BGM
                 </Button>
-                <Button
-                  variant={containsImageOnly ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    setContainsImageOnly((prev) => !prev);
-                    setCurrentPage(1);
-                  }}
-                  className="rounded-full px-3 sm:px-4"
-                >
-                  Contians Image
+                <Button variant={containsImageOnly ? "default" : "outline"} size="sm" className="rounded-full px-3 sm:px-4" onClick={() => { setContainsImageOnly((prev) => !prev); setCurrentPage(1); }}>
+                  Has Image
+                </Button>
+                <Button variant={missingBgmOnly ? "default" : "outline"} size="sm" className="rounded-full px-3 sm:px-4" onClick={() => { setMissingBgmOnly((prev) => !prev); setCurrentPage(1); }}>
+                  Missing BGM
+                </Button>
+                <Button variant={missingImageOnly ? "default" : "outline"} size="sm" className="rounded-full px-3 sm:px-4" onClick={() => { setMissingImageOnly((prev) => !prev); setCurrentPage(1); }}>
+                  Missing Image
+                </Button>
+                <Button variant={favoritesOnly ? "default" : "outline"} size="sm" className="rounded-full px-3 sm:px-4" onClick={() => { setFavoritesOnly((prev) => !prev); setCurrentPage(1); }}>
+                  Favorites Only
                 </Button>
               </div>
             </div>
+
+            <div className="-mx-1 overflow-x-auto px-1">
+              <div className="flex min-w-max gap-2 sm:min-w-0 sm:flex-wrap">
+                <Select value={sortMode} onValueChange={(value) => { setSortMode(value as SortMode); setCurrentPage(1); }}>
+                  <SelectTrigger className="h-9 w-[160px]">
+                    <SelectValue placeholder="Sort" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name_asc">Name A-Z</SelectItem>
+                    <SelectItem value="name_desc">Name Z-A</SelectItem>
+                    <SelectItem value="id_asc">ID Asc</SelectItem>
+                    <SelectItem value="id_desc">ID Desc</SelectItem>
+                    <SelectItem value="source_asc">Source A-Z</SelectItem>
+                    <SelectItem value="source_desc">Source Z-A</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button size="sm" variant={viewMode === "grid" ? "default" : "outline"} onClick={() => setViewMode("grid")}>
+                  <Grid3X3 className="mr-1.5 h-4 w-4" />
+                  Grid
+                </Button>
+                <Button size="sm" variant={viewMode === "list" ? "default" : "outline"} onClick={() => setViewMode("list")}>
+                  <LayoutList className="mr-1.5 h-4 w-4" />
+                  List
+                </Button>
+                <Button size="sm" variant={groupBySource ? "default" : "outline"} onClick={() => setGroupBySource((prev) => !prev)}>
+                  Group Source
+                </Button>
+                <Button size="sm" variant="outline" onClick={copyShareLink}>
+                  <Copy className="mr-1.5 h-4 w-4" />
+                  {copiedShare ? "Copied" : "Share State"}
+                </Button>
+                <Button size="sm" variant="outline" onClick={resetFilters}>
+                  Reset Filters
+                </Button>
+                <Button size="sm" variant="ghost" asChild>
+                  <Link href="/quests">Classic</Link>
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-4">
+          <CardContent className="flex flex-wrap items-center gap-2 p-3">
+            <Input
+              value={jumpQuery}
+              onChange={(e) => setJumpQuery(e.target.value)}
+              placeholder="Jump to ID/name/source..."
+              className="h-8 w-[240px]"
+            />
+            <Button size="sm" variant="outline" onClick={jumpToMatch}>Jump</Button>
+            <Button size="sm" variant="outline" onClick={selectVisible} disabled={paginatedItems.length === 0}>
+              Select Visible
+            </Button>
+            <Button size="sm" variant="outline" onClick={copySelectedIds} disabled={selectedKeys.size === 0}>
+              <Copy className="mr-1.5 h-3.5 w-3.5" />
+              {copiedIds ? "Copied IDs" : "Copy Selected IDs"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setSelectedFavoriteState(true)} disabled={selectedKeys.size === 0}>
+              Favorite Selected
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setSelectedFavoriteState(false)} disabled={selectedKeys.size === 0}>
+              Unfavorite Selected
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setSelectedKeys(new Set())} disabled={selectedKeys.size === 0}>
+              Clear Selection
+            </Button>
+            <span className="ml-auto text-xs text-muted-foreground">Shortcuts: <kbd>/</kbd> search, <kbd>N</kbd>/<kbd>P</kbd> page</span>
           </CardContent>
         </Card>
 
@@ -662,13 +1230,7 @@ export default function QuestViewerPage() {
               </p>
               <Button
                 variant="outline"
-                onClick={() => {
-                  setSearch("");
-                  setMode("all");
-                  setContainsBgmOnly(false);
-                  setContainsImageOnly(false);
-                  setCurrentPage(1);
-                }}
+                onClick={resetFilters}
               >
                 Reset Filters
               </Button>
@@ -680,58 +1242,25 @@ export default function QuestViewerPage() {
               Showing {(safeCurrentPage - 1) * ITEMS_PER_PAGE + 1}-
               {Math.min(safeCurrentPage * ITEMS_PER_PAGE, filteredItems.length)} of {filteredItems.length} quests
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-              {paginatedItems.map((item) => {
-                const sourceFile = getSourceFile(item);
-                const type = getQuestType(sourceFile);
-                const hasBgm = bgmLookup.get(`${item.id}::${sourceFile}`) === true;
-
-                return (
-                  <Card
-                    key={`${item.id}-${sourceFile}`}
-                    className="group overflow-hidden border transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"
-                  >
-                    <CardContent className="p-0">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedItem(item)}
-                        className="w-full p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <div className="mb-3 flex h-24 items-center justify-center rounded-md bg-gradient-to-b from-muted/60 to-muted/30">
-                          <QuestImage
-                            key={`${item.id}-${sourceFile}-card`}
-                            item={item}
-                            alt={item.label}
-                            width={96}
-                            height={96}
-                            compact
-                          />
-                        </div>
-
-                        <div className="mb-2 flex items-center gap-2">
-                          <Badge variant="outline" className="px-2 py-0 text-[10px] uppercase">
-                            {type}
-                          </Badge>
-                          {hasBgm && (
-                            <Badge variant="secondary" className="px-2 py-0 text-[10px] uppercase">
-                              Contains BGM
-                            </Badge>
-                          )}
-                        </div>
-
-                        <p className="mb-1 line-clamp-2 min-h-10 text-sm font-semibold leading-5">{item.label}</p>
-                        <p className="mb-3 truncate text-[11px] text-muted-foreground">{sourceFile}</p>
-
-                        <div className="flex items-center text-xs text-primary opacity-80 transition group-hover:opacity-100">
-                          View details
-                          <ExternalLink className="ml-1 h-3 w-3" />
-                        </div>
-                      </button>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+            {groupBySource ? (
+              <div className="space-y-4">
+                {groupedPaginatedItems.map(([source, sourceItems]) => (
+                  <section key={source}>
+                    <div className="mb-2 flex items-center gap-2">
+                      <Badge variant="outline">{source}</Badge>
+                      <Badge variant="secondary">{sourceItems.length} on page</Badge>
+                    </div>
+                    <div className={viewMode === "grid" ? "grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6" : "space-y-2"}>
+                      {sourceItems.map((item) => renderQuestCard(item))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <div className={viewMode === "grid" ? "grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6" : "space-y-2"}>
+                {paginatedItems.map((item) => renderQuestCard(item))}
+              </div>
+            )}
           </>
         )}
       </div>

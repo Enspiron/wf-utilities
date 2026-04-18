@@ -25,7 +25,7 @@ const getAttributeIcon = (attr: string) => {
     'Light': 'white',
     'Dark': 'black',
   };
-  return `/FilterIcons/elements/element_${map[attr] || attr.toLowerCase()}_medium.png`;
+  return `/FilterIcons/elements/round_ability_${map[attr] || attr.toLowerCase()}.png`;
 };
 
 const getWeaponTypeIcon = (type: string) => {
@@ -80,13 +80,9 @@ const toCharacterImageUrl = (faceCode: string) =>
   `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${faceCode}/ui/square_0.png`;
 
 function CharacterPortrait({ src, name }: { src: string; name: string }) {
-  const [failed, setFailed] = useState(false);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
-  useEffect(() => {
-    setFailed(false);
-  }, [src]);
-
-  if (failed) {
+  if (failedSrc === src) {
     return <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">No Img</div>;
   }
 
@@ -98,7 +94,7 @@ function CharacterPortrait({ src, name }: { src: string; name: string }) {
       className="object-contain [image-rendering:auto]"
       loading="lazy"
       unoptimized
-      onError={() => setFailed(true)}
+      onError={() => setFailedSrc(src)}
     />
   );
 }
@@ -857,7 +853,7 @@ export default function CharactersPage() {
             </ScrollArea>
           </aside>
 
-          <div className="flex-1 overflow-hidden min-h-0">
+          <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
             <div className="p-2 sm:p-3 lg:p-2 pb-20">
             {filteredCharacters.length === 0 ? (
               <div className="text-center py-12">
@@ -870,7 +866,7 @@ export default function CharactersPage() {
                 )}
               </div>
             ) : layout === 'grid' ? (
-                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 2xl:grid-cols-16 gap-0.5">
+                <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 2xl:grid-cols-16 gap-0.5">
                   {paginatedCharacters.map((char) => {
                     const raceTokens = Array.from(
                       new Set(
@@ -894,12 +890,12 @@ export default function CharactersPage() {
                                   name={getCharacterName(char)}
                                 />
                                 {/* Attribute icon overlay */}
-                                <div className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-sm overflow-hidden bg-background/80 backdrop-blur-sm shadow">
+                                <div className="absolute top-0.5 right-0.5 h-4 w-4 overflow-hidden sm:h-8 sm:w-8">
                                   <Image
                                     src={getAttributeIcon(char.attribute)}
                                     alt={char.attribute}
                                     fill
-                                    className="object-contain p-0.5"
+                                    className="object-contain"
                                     unoptimized
                                   />
                                 </div>

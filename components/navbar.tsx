@@ -12,6 +12,7 @@ import {
   Database,
   ExternalLink,
   FileJson,
+  Film,
   Home,
   Keyboard,
   Menu,
@@ -21,9 +22,11 @@ import {
   Search,
   Sparkles,
   Ticket,
+  Trophy,
   User,
   Wrench,
   X,
+  Zap,
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
@@ -94,12 +97,27 @@ const SAVE_EDITOR_ITEM: NavItem = { href: '/save-editor', label: 'Save Editor', 
 
 const NAV_GROUPS: NavGroup[] = [
   {
+    label: 'Community',
+    icon: Clipboard,
+    items: [
+      { href: '/profile', label: 'Profile', icon: User },
+      { href: '/community', label: 'Community Feed', icon: Clipboard },
+      { href: '/community/new', label: 'Submit Team', icon: Sparkles },
+      { href: '/saves', label: 'Save Shares', icon: FileJson },
+      { href: '/community/moderation', label: 'Moderation', icon: Wrench },
+      { href: '/login', label: 'Login', icon: User },
+      { href: '/register', label: 'Register', icon: User },
+    ],
+  },
+  {
     label: 'Game Data',
     icon: Database,
     items: [
       { href: '/characters', label: 'Characters', icon: Database },
       { href: '/items', label: 'Items', icon: Package },
       { href: '/quests', label: 'Quests', icon: FileJson },
+      { href: '/abilities', label: 'Abilities', icon: Zap },
+      { href: '/achievements', label: 'Achievements', icon: Trophy },
     ],
   },
   {
@@ -107,6 +125,8 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Calendar,
     items: [
       { href: '/calendar', label: 'Calendar', icon: Calendar },
+      { href: '/calendar-v2', label: 'Calendar V2', icon: Calendar },
+      { href: '/feature-timeline', label: 'Feature Timeline', icon: Sparkles },
       { href: '/gacha', label: 'Gacha', icon: Ticket },
     ],
   },
@@ -116,7 +136,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/manaboard', label: 'Mana Board', icon: Sparkles },
       { href: '/orderedmap', label: 'OrderedMap', icon: FileJson },
-      { href: '/orderedmap-v2', label: 'OrderedMap V2', icon: FileJson },
       { href: '/exboost', label: 'EX Boost', icon: Sparkles },
       { href: '/share', label: 'Share', icon: FileJson },
     ],
@@ -126,6 +145,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: User,
     items: [
       { href: '/facebuilder', label: 'Face Builder', icon: User },
+      { href: '/sprite-sheets', label: 'Sprite Sheets', icon: Film },
       { href: '/music', label: 'Music', icon: Music2 },
       { href: '/comics', label: 'Comics', icon: BookOpenText },
     ],
@@ -138,17 +158,28 @@ const WF_CDN_ROOT = 'https://wfjukebox.b-cdn.net';
 const QUICK_JUMP_KEYWORDS: Record<string, string[]> = {
   '/': ['home', 'dashboard', 'overview'],
   '/save-editor': ['save', 'json', 'editor', 'account'],
+  '/profile': ['profile', 'account', 'status', 'role'],
+  '/community': ['community', 'teams', 'builds', 'feed'],
+  '/community/new': ['submit', 'team upload', 'community'],
+  '/community/moderation': ['moderation', 'approve', 'reject', 'queue'],
+  '/saves': ['save shares', 'shared saves', 'clone', 'import'],
+  '/login': ['login', 'sign in', 'auth'],
+  '/register': ['register', 'sign up', 'auth'],
   '/characters': ['characters', 'units', 'roster'],
   '/items': ['items', 'equipment', 'materials', 'weapons'],
   '/quests': ['quests', 'story', 'missions'],
+  '/abilities': ['abilities', 'ability', 'skills', 'passives', 'leader', 'soul'],
+  '/achievements': ['achievements', 'titles', 'degrees', 'trophies'],
   '/calendar': ['calendar', 'events', 'schedule'],
+  '/calendar-v2': ['calendar v2', 'events', 'timeline', 'month', 'table', 'schedule'],
+  '/feature-timeline': ['feature', 'timeline', 'banner', 'announcement', 'home banner'],
   '/gacha': ['gacha', 'banner', 'odds'],
   '/manaboard': ['mana', 'board', 'nodes'],
-  '/orderedmap': ['orderedmap', 'datalist', 'json'],
-  '/orderedmap-v2': ['orderedmap v2', 'parsed', 'explorer'],
+  '/orderedmap': ['orderedmap', 'datalist', 'json', 'parsed', 'explorer'],
   '/exboost': ['ex boost', 'boost'],
   '/share': ['share', 'embed', 'meta'],
   '/facebuilder': ['face', 'builder', 'portrait'],
+  '/sprite-sheets': ['sprite sheets', 'spritesheet', 'animation', 'animated', 'battle', 'boss', 'funnel', 'cutin'],
   '/music': ['music', 'bgm', 'audio'],
   '/comics': ['comics', 'episodes'],
 };
@@ -204,20 +235,15 @@ function isActivePath(pathname: string, href: string): boolean {
 }
 
 function isGroupActive(pathname: string, group: NavGroup): boolean {
-  return group.items.some((item) => isActivePath(pathname, item.href));
+  return group.items.some((item) => pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`)));
 }
 
 function QuickJumpEntryVisual({ entry }: { entry: QuickJumpEntry }) {
-  const [imageIndex, setImageIndex] = useState(0);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
   const candidates = entry.imageCandidates || [];
-  const candidateKey = candidates.join('|');
   const EntryIcon = entry.icon;
 
-  useEffect(() => {
-    setImageIndex(0);
-  }, [entry.id, candidateKey]);
-
-  const activeImage = imageIndex < candidates.length ? candidates[imageIndex] : '';
+  const activeImage = candidates.find((candidate) => !failedImages.has(candidate)) || '';
 
   return (
     <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-background/70">
@@ -232,7 +258,14 @@ function QuickJumpEntryVisual({ entry }: { entry: QuickJumpEntry }) {
             entry.imagePixelated ? '[image-rendering:pixelated]' : '[image-rendering:auto]'
           )}
           unoptimized={true}
-          onError={() => setImageIndex((current) => current + 1)}
+          onError={() =>
+            setFailedImages((current) => {
+              if (current.has(activeImage)) return current;
+              const next = new Set(current);
+              next.add(activeImage);
+              return next;
+            })
+          }
         />
       ) : (
         <EntryIcon className="h-4 w-4 text-muted-foreground" />
@@ -320,6 +353,7 @@ export function Navbar() {
     const entries: QuickJumpEntry[] = [];
 
     for (const character of characterRows) {
+      const characterId = (character.id || '').trim();
       const faceCode = (character.faceCode || '').trim();
       if (!faceCode) continue;
       const nameEN = (character.nameEN || '').trim();
@@ -328,15 +362,16 @@ export function Navbar() {
       const subNameJP = (character.subNameJP || '').trim();
       const title = nameEN || nameJP || faceCode;
       const subtitleName = nameEN && nameJP && nameEN !== nameJP ? ` | ${nameJP}` : '';
+      const idSegment = characterId ? `ID ${characterId} | ` : '';
 
       entries.push({
         id: `char:${faceCode}`,
         title,
-        subtitle: `Character | ${faceCode}${subtitleName}`,
+        subtitle: `Character | ${idSegment}${faceCode}${subtitleName}`,
         href: `/characters/${encodeURIComponent(faceCode)}`,
         icon: User,
         group: 'Data',
-        keywords: [faceCode, nameEN, nameJP, subNameEN, subNameJP, 'character', 'unit']
+        keywords: [characterId, faceCode, nameEN, nameJP, subNameEN, subNameJP, 'character', 'unit', 'char']
           .map((token) => token.toLowerCase())
           .filter(Boolean),
         imagePixelated: false,
@@ -363,7 +398,16 @@ export function Navbar() {
         href: itemType === 'equipment' ? `/equip/${encodeURIComponent(itemId)}` : `/item/${encodeURIComponent(itemId)}`,
         icon: itemType === 'equipment' ? Wrench : Package,
         group: 'Data',
-        keywords: [itemId, itemName, devname, category, typeLabel, itemType]
+        keywords: [
+          itemId,
+          itemName,
+          devname,
+          category,
+          typeLabel,
+          itemType,
+          itemType === 'equipment' ? 'equip' : 'item',
+          itemType === 'equipment' ? 'weapon' : 'material',
+        ]
           .map((token) => token.toLowerCase())
           .filter(Boolean),
         imageCandidates: getItemImageCandidates(item),
@@ -375,7 +419,8 @@ export function Navbar() {
   }, [characterRows, itemRows]);
 
   const queryToken = quickJumpQuery.trim().toLowerCase();
-  const showDataSearchResults = queryToken.length >= 2;
+  const isNumericQuery = /^\d+$/.test(queryToken);
+  const showDataSearchResults = queryToken.length >= (isNumericQuery ? 1 : 2);
 
   const quickJumpEntries = useMemo<QuickJumpEntry[]>(
     () => [...navigationEntries, ...(showDataSearchResults ? dataEntries : []), ...actionEntries],
@@ -721,7 +766,7 @@ export function Navbar() {
                 value={quickJumpQuery}
                 onChange={(event) => setQuickJumpQuery(event.target.value)}
                 onKeyDown={handleQuickJumpInputKeyDown}
-                placeholder="Search pages, tools, and actions..."
+                placeholder="Search pages, IDs, characters, items, equipment..."
                 className="h-10 pl-9 pr-10"
               />
               <div className="pointer-events-none absolute right-2 top-1/2 inline-flex -translate-y-1/2 items-center rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -729,9 +774,9 @@ export function Navbar() {
                 Enter
               </div>
             </div>
-            {queryToken.length > 0 && queryToken.length < 2 && (
+            {queryToken.length > 0 && !isNumericQuery && queryToken.length < 2 && (
               <p className="mt-2 text-xs text-muted-foreground">
-                Type at least 2 characters to search characters/items.
+                Type at least 2 letters to search characters/items, or enter numeric IDs directly.
               </p>
             )}
             {showDataSearchResults && searchDataStatus === 'loading' && (
@@ -757,7 +802,7 @@ export function Navbar() {
 
           {quickJumpResults.length === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">
-              No results found for "{quickJumpQuery}".
+              No results found for &quot;{quickJumpQuery}&quot;.
             </div>
           ) : (
             <ScrollArea className="max-h-[60vh]">
@@ -811,4 +856,3 @@ export function Navbar() {
     </nav>
   );
 }
-

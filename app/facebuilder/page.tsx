@@ -856,9 +856,9 @@ export default function FaceBuilder() {
 
             {viewMode === 'compose' ? (
               /* Compose Mode */
-              <div className="flex h-full gap-4 p-6 overflow-hidden">
+              <div className="flex flex-col md:flex-row h-full gap-4 p-4 md:p-6 overflow-y-auto md:overflow-hidden">
                 {/* Left Panel - Expression Selection */}
-                <div className="w-80 flex flex-col gap-4">
+                <div className="w-full md:w-72 flex-shrink-0 flex flex-col gap-4 md:h-full md:overflow-y-auto">
                   {/* Base Selection */}
                   <Card>
                     <CardHeader className="pb-3">
@@ -981,7 +981,7 @@ export default function FaceBuilder() {
 
                   {/* Expression Selection */}
                   {availableExpressions.length > 0 && (
-                    <Card className="flex-1 flex flex-col overflow-hidden">
+                    <Card className="flex-1 min-h-0 flex flex-col overflow-hidden max-h-[45vh] md:max-h-none">
                       <CardHeader className="pb-3">
                         <div className="flex items-center justify-between">
                           <CardTitle className="text-sm">Expressions</CardTitle>
@@ -1004,35 +1004,35 @@ export default function FaceBuilder() {
                             {mainExps.length > 0 && (
                               <div>
                                 <h4 className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Main Expressions</h4>
-                                <div className="space-y-1">
+                                <div className="grid grid-cols-2 gap-1">
                                   {mainExps.map(expression => (
                                     <Button
                                       key={expression}
                                       variant={selectedExpressions.has(expression) ? 'default' : 'ghost'}
                                       size="sm"
-                                      className="w-full justify-start text-left font-normal text-xs"
+                                      className="h-auto py-1.5 px-2 justify-start text-left font-normal"
                                       onClick={() => toggleExpression(expression)}
                                     >
-                                      <span className="truncate">◉ {expression.replace('.png', '')}</span>
+                                      <span className="truncate text-[11px]">◉ {expression.replace(/\.(png|atf)$/i, '')}</span>
                                     </Button>
                                   ))}
                                 </div>
                               </div>
                             )}
-                            
+
                             {otherExps.length > 0 && (
                               <div>
-                                <h4 className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Other Parts</h4>
-                                <div className="space-y-1">
+                                <h4 className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Add-ons</h4>
+                                <div className="grid grid-cols-2 gap-1">
                                   {otherExps.map(expression => (
                                     <Button
                                       key={expression}
                                       variant={selectedExpressions.has(expression) ? 'default' : 'ghost'}
                                       size="sm"
-                                      className="w-full justify-start text-left font-normal text-xs"
+                                      className="h-auto py-1.5 px-2 justify-start text-left font-normal"
                                       onClick={() => toggleExpression(expression)}
                                     >
-                                      <span className="truncate">☐ {expression.replace('.png', '')}</span>
+                                      <span className="truncate text-[11px]">☐ {expression.replace(/\.(png|atf)$/i, '')}</span>
                                     </Button>
                                   ))}
                                 </div>
@@ -1046,7 +1046,7 @@ export default function FaceBuilder() {
                 </div>
 
                 {/* Right Panel - Preview */}
-                <Card className="flex-1 flex flex-col">
+                <Card className="flex-1 min-h-[320px] flex flex-col">
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div>

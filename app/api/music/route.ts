@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-
-const USE_CDN = process.env.VERCEL === '1';
-const CDN_BASE_URL = 'https://wfjukebox.b-cdn.net';
+import { fetchDatalistJson, DATA_CACHE_HEADERS, ASSET_CDN_BASE as CDN_BASE_URL } from '@/lib/data-source';
 
 interface MusicTrack {
   path: string;
@@ -150,20 +148,9 @@ function parseTimingMeta(raw: unknown): {
 
 export async function GET() {
   try {
-    let bgmData: Record<string, unknown>;
-
-    if (USE_CDN) {
-      // Fetch from CDN in production
-      const bgmUrl = 'https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data/datalist/asset/bgm_asset.json';
-      const response = await fetch(bgmUrl, { next: { revalidate: 3600 } });
-      bgmData = await response.json();
-    } else {
-      // Use local files in development
-      const fs = await import('fs');
-      const path = await import('path');
-      const bgmPath = path.join(process.cwd(), 'public', 'data', 'datalist', 'asset', 'bgm_asset.json');
-      bgmData = JSON.parse(fs.readFileSync(bgmPath, 'utf-8'));
-    }
+    const bgmData = await fetchDatalistJson<Record<string, unknown>>(
+      'datalist/asset/bgm_asset.json'
+    );
 
     const tracks: MusicTrack[] = [];
 
@@ -190,10 +177,10 @@ export async function GET() {
       return a.name.localeCompare(b.name);
     });
 
-    return NextResponse.json({
-      tracks,
-      count: tracks.length
-    });
+    return NextResponse.json(
+      { tracks, count: tracks.length },
+      { headers: DATA_CACHE_HEADERS }
+    );
   } catch (error) {
     console.error('Error loading music data:', error);
     return NextResponse.json(

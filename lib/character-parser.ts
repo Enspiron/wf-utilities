@@ -234,16 +234,22 @@ const weaponRoleMap: Record<string, string> = {
   'Axe': 'Strike',
 };
 
-export function parseCharacterAllData(data: CharacterAllFormat): Character[] {
+export function parseCharacterAllData(
+  data: CharacterAllFormat,
+  faceCodeToId?: Record<string, string>
+): Character[] {
   return data.chars.map((char, index) => {
     // Extract title from EN name (format: "[Title]\nName")
     const enNameParts = char.ENName?.split('\n') || [];
     const titleEN = enNameParts[0]?.replace(/[\[\]]/g, '') || '';
     const nameEN = enNameParts[1] || char.JPName;
 
+    const faceCode = char.DevNicknames || '';
+    const mappedId = faceCodeToId?.[faceCode];
+
     const character: Character = {
-      id: String(index + 1),
-      faceCode: char.DevNicknames || '',
+      id: mappedId || String(index + 1),
+      faceCode,
       attribute: char.Attribute || '',
       rarity: String(char.Rarity || 5),
       race: char.Race || '',

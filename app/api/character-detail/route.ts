@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const USE_CDN = process.env.VERCEL === '1';
-const CDN_BASE_URL = 'https://raw.githubusercontent.com/Enspiron/wf-utilities/main/public/data';
-const CACHE_TTL_MS = 10 * 60 * 1000;
+import { unstable_cache } from 'next/cache';
+import { fetchDatalistJson, DATA_CACHE_HEADERS } from '@/lib/data-source';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -62,8 +60,6 @@ interface CharacterDatasets {
   fullShotEN: JsonRecord;
   fullShotJP: JsonRecord;
 }
-
-let datasetsCache: { loadedAt: number; data: CharacterDatasets } | null = null;
 
 const weaponRoleMap: Record<string, string> = {
   Sword: 'Slash',
@@ -177,27 +173,8 @@ function findCharacterId(devnickname: string, characterMapEN: JsonRecord, charac
   return null;
 }
 
-async function loadJson(relativePath: string): Promise<unknown> {
-  if (USE_CDN) {
-    const url = `${CDN_BASE_URL}/${relativePath}`;
-    const response = await fetch(url, { next: { revalidate: 3600 } });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch ${relativePath}: ${response.status}`);
-    }
-    return response.json();
-  }
-
-  const fs = await import('fs/promises');
-  const path = await import('path');
-  const fullPath = path.join(process.cwd(), 'public', 'data', ...relativePath.split('/'));
-  const file = await fs.readFile(fullPath, 'utf-8');
-  return JSON.parse(file);
-}
-
-async function loadDatasets(): Promise<CharacterDatasets> {
-  if (datasetsCache && Date.now() - datasetsCache.loadedAt < CACHE_TTL_MS) {
-    return datasetsCache.data;
-  }
+async function loadDatasetsImpl(): Promise<CharacterDatasets> {
+  const loadJson = (p: string) => fetchDatalistJson<unknown>(p);
 
   const [
     charactersAll,
@@ -229,7 +206,7 @@ async function loadDatasets(): Promise<CharacterDatasets> {
     loadJson('datalist/character/full_shot_image_attribute.json'),
   ]);
 
-  const data: CharacterDatasets = {
+  return {
     charactersAll: asRecord(charactersAll) as CharactersAllFile,
     characterMapEN: asRecord(characterMapEN),
     characterMapJP: asRecord(characterMapJP),
@@ -244,14 +221,28 @@ async function loadDatasets(): Promise<CharacterDatasets> {
     fullShotEN: asRecord(fullShotEN),
     fullShotJP: asRecord(fullShotJP),
   };
-
-  datasetsCache = { loadedAt: Date.now(), data };
-  return data;
 }
+
+// Replace the old ad-hoc `datasetsCache` Map with Next's durable cache so the
+// payload survives cold starts across Lambda instances.
+const loadDatasets = unstable_cache(loadDatasetsImpl, ['character-detail-datasets'], {
+  revalidate: 600,
+  tags: ['character-detail'],
+});
 
 export async function GET(request: NextRequest) {
   try {
     const devnickname = request.nextUrl.searchParams.get('devnickname');
+    const includeParam = request.nextUrl.searchParams.get('include') ?? '';
+    // Allows callers to fetch related payloads in a single round-trip,
+    // collapsing /api/character-text and /api/character-theme into this one.
+    // e.g. /api/character-detail?devnickname=X&include=text,theme
+    const includes = new Set(
+      includeParam
+        .split(',')
+        .map((part) => part.trim().toLowerCase())
+        .filter(Boolean)
+    );
 
     if (!devnickname) {
       return NextResponse.json({ error: 'devnickname parameter is required' }, { status: 400 });
@@ -320,7 +311,48 @@ export async function GET(request: NextRequest) {
     const hitCount = toNumber(baseCharacter.HitCount);
     const feverGain = toNumber(baseCharacter.FeverGain);
 
-    return NextResponse.json({
+    // Optional sidecar payloads. Computed lazily so the default response
+    // shape doesn't grow for callers that don't ask for them.
+    const includedText = includes.has('text')
+      ? {
+          en: characterId ? datasets.characterTextEN[characterId] ?? null : null,
+          jp: characterId ? datasets.characterTextJP[characterId] ?? null : null,
+        }
+      : undefined;
+
+    let includedThemes: Array<{ path: string; songName: string; url: string }> | undefined;
+    if (includes.has('theme')) {
+      const faceCode = cleanText(baseCharacter.DevNicknames);
+      const prefix = `bgm/character_unique/${faceCode}/`;
+      const found: Array<{ path: string; songName: string; url: string }> = [];
+      try {
+        const bgm = await fetchDatalistJson<Record<string, unknown>>(
+          'datalist/asset/bgm_asset.json'
+        );
+        for (const key of Object.keys(bgm)) {
+          if (key.startsWith(prefix)) {
+            found.push({
+              path: key,
+              songName: key.substring(prefix.length),
+              url: `https://wfjukebox.b-cdn.net/${key}.mp3`,
+            });
+          }
+        }
+      } catch {
+        // bgm asset failed; fall through to the implicit-fallback below.
+      }
+      if (found.length === 0 && faceCode) {
+        found.push({
+          path: `character_unique/${faceCode}/${faceCode}`,
+          songName: faceCode,
+          url: `https://wfjukebox.b-cdn.net/music/character_unique/${faceCode}/${faceCode}.mp3`,
+        });
+      }
+      includedThemes = found;
+    }
+
+    return NextResponse.json(
+      {
       character: {
         id: characterId ?? '',
         faceCode: cleanText(baseCharacter.DevNicknames),
@@ -370,7 +402,11 @@ export async function GET(request: NextRequest) {
         galleryUrls,
         fullShotAttributes,
       },
-    });
+      ...(includedText ? { text: includedText } : {}),
+      ...(includedThemes ? { themes: includedThemes } : {}),
+    },
+      { headers: DATA_CACHE_HEADERS }
+    );
   } catch (error) {
     console.error('Error loading character detail:', error);
     return NextResponse.json({ error: 'Failed to load character detail data' }, { status: 500 });

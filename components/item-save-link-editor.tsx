@@ -55,7 +55,12 @@ const ensureNestedRecord = (record: JsonRecord, key: string): JsonRecord => {
 export default function ItemSaveLinkEditor({ mode, entityId, enhancementOptions = [] }: SaveLinkEditorProps) {
   const [persistedState, setPersistedState] = useState<PersistedSaveEditorState | null>(null);
   const [storageStatus, setStorageStatus] = useState<'checking' | 'ready' | 'missing' | 'invalid'>('checking');
-  const [quantityDraft, setQuantityDraft] = useState('0');
+  const [quantityDraftState, setQuantityDraftState] = useState({
+    baseQuantity: 0,
+    entityId: '',
+    mode: 'item' as EditorMode,
+    value: '0',
+  });
   const [feedback, setFeedback] = useState<string>('');
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -101,6 +106,8 @@ export default function ItemSaveLinkEditor({ mode, entityId, enhancementOptions 
   };
 
   useEffect(() => {
+    // localStorage is only available after the client component mounts.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadFromLocalStorage();
     return () => clearFeedbackTimer();
   }, []);
@@ -152,10 +159,21 @@ export default function ItemSaveLinkEditor({ mode, entityId, enhancementOptions 
     return Math.max(0, toInteger(itemList[entityId], 0));
   }, [entityId, itemList]);
 
-  useEffect(() => {
-    if (mode !== 'item') return;
-    setQuantityDraft(String(currentItemQuantity));
-  }, [currentItemQuantity, mode]);
+  const quantityDraft =
+    quantityDraftState.entityId === entityId &&
+    quantityDraftState.mode === mode &&
+    quantityDraftState.baseQuantity === currentItemQuantity
+      ? quantityDraftState.value
+      : String(currentItemQuantity);
+
+  const setQuantityDraft = (value: string) => {
+    setQuantityDraftState({
+      baseQuantity: currentItemQuantity,
+      entityId,
+      mode,
+      value,
+    });
+  };
 
   const currentEquipment = useMemo(() => {
     if (!equipmentList) return null;
@@ -423,4 +441,3 @@ export default function ItemSaveLinkEditor({ mode, entityId, enhancementOptions 
     </Card>
   );
 }
-
