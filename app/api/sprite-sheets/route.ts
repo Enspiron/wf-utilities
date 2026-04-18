@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
-import { DATA_CACHE_HEADERS } from '@/lib/data-source';
+import { DATA_CACHE_HEADERS, DATA_CDN_BASE } from '@/lib/data-source';
 
 type Lang = 'jp' | 'en';
 
@@ -42,8 +42,19 @@ const BAD_EXT_RE = /\.(mp3|ogg|wav|m4a|aac|flac|awb|acb|json|orderedmap|txt|csv)
 const PATH_TOKEN_RE = /https?:\/\/[^\s"'`]+|\/?[A-Za-z0-9._$-]+(?:\/[A-Za-z0-9._$-]+)+/g;
 const CACHE_MS = 10 * 60 * 1000;
 const CACHE_VERSION = 2;
+const PREBUILT_INDEX_RELATIVE_PATH = 'sprite-sheets-index.json';
 
-let cachedPayload: { at: number; version: number; assets: SpriteSheetCandidate[]; scannedFiles: number } | null = null;
+type PayloadSource = 'local-scan' | 'local-scan-unverified' | 'prebuilt-local' | 'prebuilt-remote';
+
+type CachedPayload = {
+  at: number;
+  version: number;
+  assets: SpriteSheetCandidate[];
+  scannedFiles: number;
+  source: PayloadSource;
+};
+
+let cachedPayload: CachedPayload | null = null;
 let cachedAssetTree: { at: number; index: AssetTreeIndex | null } | null = null;
 
 function normalizeAssetPath(raw: string): string {
@@ -73,10 +84,13 @@ async function fileExists(filePath: string): Promise<boolean> {
 }
 
 async function getAssetTreePath(): Promise<string | null> {
+  if (process.env.WF_ASSET_TREE_PATH) {
+    return (await fileExists(process.env.WF_ASSET_TREE_PATH)) ? process.env.WF_ASSET_TREE_PATH : null;
+  }
+
   const candidates = [
-    process.env.WF_ASSET_TREE_PATH,
     path.resolve(process.cwd(), '..', 'WFDatamine', 'output', 'asset-tree.txt'),
-  ].filter((candidate): candidate is string => Boolean(candidate));
+  ];
 
   for (const candidate of candidates) {
     if (await fileExists(candidate)) return candidate;
@@ -134,6 +148,70 @@ async function getAssetTreeIndex(): Promise<AssetTreeIndex | null> {
     return index;
   } catch {
     cachedAssetTree = { at: now, index: null };
+    return null;
+  }
+}
+
+function coerceStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
+function normalizePrebuiltPayload(raw: unknown, source: PayloadSource): Omit<CachedPayload, 'at' | 'version'> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const payload = raw as { assets?: unknown; scannedFiles?: unknown };
+  if (!Array.isArray(payload.assets)) return null;
+
+  const assets: SpriteSheetCandidate[] = [];
+  for (const entry of payload.assets) {
+    if (!entry || typeof entry !== 'object') continue;
+    const candidate = entry as Partial<SpriteSheetCandidate>;
+    if (typeof candidate.path !== 'string') continue;
+
+    const assetPath = normalizeAssetPath(candidate.path);
+    if (!assetPath) continue;
+
+    assets.push({
+      id: typeof candidate.id === 'string' ? candidate.id : assetPath.toLowerCase(),
+      path: assetPath,
+      label: typeof candidate.label === 'string' ? candidate.label : humanizePath(assetPath),
+      category: typeof candidate.category === 'string' ? candidate.category : 'unknown',
+      file: typeof candidate.file === 'string' ? candidate.file : 'sprite-sheets-index',
+      lang: candidate.lang === 'jp' ? 'jp' : 'en',
+      sourceKey: typeof candidate.sourceKey === 'string' ? candidate.sourceKey : '',
+      tags: coerceStringArray(candidate.tags),
+      sources: coerceStringArray(candidate.sources).length ? coerceStringArray(candidate.sources) : buildImageSources(assetPath),
+      context: coerceStringArray(candidate.context),
+      availability: candidate.availability,
+    });
+  }
+
+  return {
+    assets,
+    scannedFiles: typeof payload.scannedFiles === 'number' ? payload.scannedFiles : 0,
+    source,
+  };
+}
+
+async function getPrebuiltPayload(): Promise<Omit<CachedPayload, 'at' | 'version'> | null> {
+  const localPath = path.join(process.cwd(), 'public', 'data', PREBUILT_INDEX_RELATIVE_PATH);
+  if (await fileExists(localPath)) {
+    try {
+      const parsed = JSON.parse(await fs.readFile(localPath, 'utf8'));
+      const payload = normalizePrebuiltPayload(parsed, 'prebuilt-local');
+      if (payload?.assets.length) return payload;
+    } catch {
+      // Fall through to the hosted copy.
+    }
+  }
+
+  try {
+    const response = await fetch(`${DATA_CDN_BASE}/${PREBUILT_INDEX_RELATIVE_PATH}`, {
+      next: { revalidate: 3600 },
+    });
+    if (!response.ok) return null;
+    const payload = normalizePrebuiltPayload(await response.json(), 'prebuilt-remote');
+    return payload?.assets.length ? payload : null;
+  } catch {
     return null;
   }
 }
@@ -402,7 +480,7 @@ async function listJsonFiles(root: string): Promise<string[]> {
   return files.flat();
 }
 
-async function buildPayload(): Promise<{ assets: SpriteSheetCandidate[]; scannedFiles: number }> {
+async function buildPayload(): Promise<CachedPayload> {
   const now = Date.now();
   if (cachedPayload && cachedPayload.version === CACHE_VERSION && now - cachedPayload.at < CACHE_MS) {
     return cachedPayload;
@@ -410,6 +488,14 @@ async function buildPayload(): Promise<{ assets: SpriteSheetCandidate[]; scanned
 
   const candidates = new Map<string, MutableCandidate>();
   const assetTree = await getAssetTreeIndex();
+  if (!assetTree) {
+    const prebuilt = await getPrebuiltPayload();
+    if (prebuilt) {
+      cachedPayload = { at: now, version: CACHE_VERSION, ...prebuilt };
+      return cachedPayload;
+    }
+  }
+
   let scannedFiles = 0;
 
   for (const lang of ['en', 'jp'] as const) {
@@ -464,7 +550,21 @@ async function buildPayload(): Promise<{ assets: SpriteSheetCandidate[]; scanned
       return a.path.localeCompare(b.path);
     });
 
-  cachedPayload = { at: now, version: CACHE_VERSION, assets, scannedFiles };
+  if (!assets.length) {
+    const prebuilt = await getPrebuiltPayload();
+    if (prebuilt) {
+      cachedPayload = { at: now, version: CACHE_VERSION, ...prebuilt };
+      return cachedPayload;
+    }
+  }
+
+  cachedPayload = {
+    at: now,
+    version: CACHE_VERSION,
+    assets,
+    scannedFiles,
+    source: assetTree ? 'local-scan' : 'local-scan-unverified',
+  };
   return cachedPayload;
 }
 
@@ -476,6 +576,7 @@ export async function GET() {
         assets: payload.assets,
         count: payload.assets.length,
         scannedFiles: payload.scannedFiles,
+        source: payload.source,
         generatedAt: new Date().toISOString(),
       },
       { headers: DATA_CACHE_HEADERS }
