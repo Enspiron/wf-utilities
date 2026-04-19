@@ -9,6 +9,11 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AudioPlayer from "@/components/AudioPlayer";
+import {
+  buildImageUrlFromPath as buildImageUrl,
+  buildMusicFallbackUrls as buildAudioFallbackUrls,
+  extractBgmTokens,
+} from "@/lib/asset-url";
 import { parseOrderedMapJson, ParsedItem } from "@/lib/json-parser";
 import {
   Copy,
@@ -38,50 +43,6 @@ type SortMode = "name_asc" | "name_desc" | "id_asc" | "id_desc" | "source_asc" |
 const ITEMS_PER_PAGE = 60;
 const SETTINGS_KEY = "quests-v2-settings";
 const FAVORITES_KEY = "quests-v2-favorites";
-
-const CDN_ROOT = "https://wfjukebox.b-cdn.net";
-const MUSIC_CDN_ROOT = "https://wfjukebox.b-cdn.net/music";
-const BGM_PATH_RE = /\/?bgm\/[A-Za-z0-9._/-]+/gi;
-
-const hasImageExtension = (s: string) => /\.(png|jpe?g|webp|svg|gif)$/i.test(s);
-
-const buildImageUrl = (s?: string) => {
-  if (!s) return "";
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  const path = s.startsWith("/") ? s.slice(1) : s;
-  return `${CDN_ROOT}/${hasImageExtension(path) ? path : `${path}.png`}`;
-};
-
-const buildAudioUrl = (s?: string) => {
-  if (!s) return "";
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  const path = s.startsWith("/") ? s.slice(1) : s;
-  return /\.mp3$/i.test(path) ? `${CDN_ROOT}/${path}` : `${CDN_ROOT}/${path}.mp3`;
-};
-
-const buildAudioFallbackUrls = (pathValue: string) => {
-  const path = normalizeAssetPath(pathValue).replace(/\.mp3$/i, "");
-  const result: string[] = [buildAudioUrl(path)];
-
-  if (path.startsWith("bgm/world_")) {
-    result.push(`${MUSIC_CDN_ROOT}/StoryBGM/${path.replace(/^bgm\//, "")}.mp3`);
-  } else if (path.startsWith("bgm/event/")) {
-    result.push(`${MUSIC_CDN_ROOT}/${path.replace(/^bgm\//, "")}.mp3`);
-  } else if (path.startsWith("bgm/common/")) {
-    result.push(`${MUSIC_CDN_ROOT}/${path.replace(/^bgm\//, "")}.mp3`);
-  } else if (path.startsWith("bgm/")) {
-    result.push(`${MUSIC_CDN_ROOT}/${path.replace(/^bgm\//, "")}.mp3`);
-  }
-
-  return Array.from(new Set(result.filter(Boolean)));
-};
-
-const extractBgmTokens = (input: string) => {
-  const matches = input.match(BGM_PATH_RE) || [];
-  return matches
-    .map((token) => token.replace(/[),.;]+$/, "").trim())
-    .filter((token) => Boolean(token));
-};
 
 const getSourceFile = (item: ParsedItem) => {
   const source = item.data._sourceFile;

@@ -22,10 +22,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import ItemsPageSkeleton from '@/components/items-page-skeleton';
+import { buildImageUrlFromPath as buildImageUrl } from '@/lib/asset-url';
 import { cn } from '@/lib/utils';
 import type { Item } from '../api/items/route';
 
-const CDN_ROOT = 'https://wfjukebox.b-cdn.net';
 const GRID_PAGE_SIZE = 108;
 const LIST_PAGE_SIZE = 42;
 
@@ -50,14 +50,6 @@ type SortKey = (typeof SORT_OPTIONS)[number]['value'];
 type ViewMode = 'grid' | 'list';
 type ItemTypeFilter = 'all' | Item['type'];
 type RegionFilter = 'all' | 'gl' | 'ja';
-
-const hasImageExtension = (value: string) => /\.(png|jpe?g|webp|gif|svg)$/i.test(value);
-
-const buildImageUrl = (value: string) => {
-  if (value.startsWith('http://') || value.startsWith('https://')) return value;
-  const normalized = value.replace(/^\/+/, '');
-  return `${CDN_ROOT}/${hasImageExtension(normalized) ? normalized : `${normalized}.png`}`;
-};
 
 const getImageCandidates = (item: Item) => {
   const seen = new Set<string>();

@@ -1,13 +1,17 @@
 'use client';
 
+import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Activity,
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
   Copy,
+  Disc3,
   ExternalLink,
   Filter,
+  Gauge,
   Headphones,
   ListMusic,
   Loader2,
@@ -17,8 +21,10 @@ import {
   Plus,
   Repeat,
   Search,
+  SlidersHorizontal,
   SkipBack,
   SkipForward,
+  Timer,
   Trash2,
   Volume2,
   VolumeX,
@@ -40,6 +46,9 @@ interface MusicTrack {
   subcategory: string;
   url: string;
   fallbackUrls: string[];
+  artworkUrl: string | null;
+  artworkUrls: string[];
+  artworkKind: 'character' | 'event' | 'world' | 'quest' | 'fallback';
   volume: number | null;
   bpm: number | null;
   trimStart: number | null;
@@ -52,13 +61,7 @@ type SortMode = 'name_asc' | 'name_desc' | 'category' | 'path';
 type PlayerState = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
 const PAGE_SIZE = 60;
-const TRACK_TONES = [
-  'from-cyan-500/20 via-cyan-400/5 to-sky-500/15 border-cyan-500/25',
-  'from-orange-500/20 via-amber-400/5 to-yellow-500/15 border-orange-500/25',
-  'from-emerald-500/20 via-green-400/5 to-teal-500/15 border-emerald-500/25',
-  'from-rose-500/20 via-red-400/5 to-pink-500/15 border-rose-500/25',
-  'from-indigo-500/20 via-blue-400/5 to-violet-500/15 border-indigo-500/25',
-];
+const CATEGORY_PREVIEW_LIMIT = 8;
 
 function toDisplayLabel(value: string): string {
   return value.replace(/[_/]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -82,12 +85,96 @@ function getSourceLabel(index: number): string {
   return `Fallback ${index}`;
 }
 
-function getToneClass(seed: string): string {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-  }
-  return TRACK_TONES[hash % TRACK_TONES.length];
+function getTempoLabel(bpm: number | null): string {
+  if (typeof bpm !== 'number' || !Number.isFinite(bpm)) return 'Unknown';
+  if (bpm >= 155) return 'Rush';
+  if (bpm >= 120) return 'Drive';
+  if (bpm >= 90) return 'Pulse';
+  return 'Drift';
+}
+
+function getArtworkSources(track: MusicTrack | null): string[] {
+  if (!track) return [];
+  const ordered = [track.artworkUrl, ...(track.artworkUrls || [])].filter((value): value is string => !!value);
+  return [...new Set(ordered)];
+}
+
+function getArtworkLabel(kind: MusicTrack['artworkKind']): string {
+  if (kind === 'character') return 'Character art';
+  if (kind === 'event') return 'Event art';
+  if (kind === 'world') return 'World art';
+  if (kind === 'quest') return 'Quest art';
+  return 'Library art';
+}
+
+function TrackArtwork({
+  track,
+  size = 'md',
+  active = false,
+}: {
+  track: MusicTrack | null;
+  size?: 'xs' | 'sm' | 'md' | 'lg';
+  active?: boolean;
+}) {
+  const sources = useMemo(() => getArtworkSources(track), [track]);
+  const sourceKey = sources.join('|');
+  const [failedArtwork, setFailedArtwork] = useState({ key: '', index: 0 });
+  const sourceIndex = failedArtwork.key === sourceKey ? failedArtwork.index : 0;
+  const activeSource = sources[sourceIndex];
+  const sizeClass =
+    size === 'lg' ? 'h-24 w-24' : size === 'md' ? 'h-14 w-14' : size === 'sm' ? 'h-10 w-10' : 'h-6 w-6';
+  const iconClass = size === 'lg' ? 'h-10 w-10' : size === 'xs' ? 'h-3.5 w-3.5' : 'h-5 w-5';
+
+  return (
+    <div
+      className={cn(
+        'relative grid shrink-0 place-items-center overflow-hidden rounded-lg border bg-muted/40',
+        sizeClass,
+        track?.artworkKind === 'character' ? 'border-primary/30' : 'border-border',
+        active && 'ring-2 ring-primary/35'
+      )}
+    >
+      {activeSource ? (
+        <Image
+          src={activeSource}
+          alt={track ? `${toDisplayLabel(track.name)} artwork` : 'Music artwork'}
+          fill
+          sizes={size === 'lg' ? '96px' : size === 'md' ? '56px' : size === 'sm' ? '40px' : '24px'}
+          className='object-cover'
+          unoptimized
+          onError={() =>
+            setFailedArtwork((prev) => ({
+              key: sourceKey,
+              index: prev.key === sourceKey ? prev.index + 1 : 1,
+            }))
+          }
+        />
+      ) : (
+        <Music2 className={cn('text-muted-foreground', iconClass)} />
+      )}
+      <div className='absolute inset-x-0 bottom-0 h-1 bg-primary/80' />
+    </div>
+  );
+}
+
+function LibraryMetric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof ListMusic;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className='rounded-lg border bg-background/70 p-3'>
+      <div className='flex items-center gap-2 text-xs text-muted-foreground'>
+        <Icon className='h-3.5 w-3.5' />
+        <span>{label}</span>
+      </div>
+      <div className='mt-1 text-lg font-semibold'>{value}</div>
+    </div>
+  );
 }
 
 function QueuePanel({
@@ -108,12 +195,15 @@ function QueuePanel({
   className?: string;
 }) {
   return (
-    <Card className={cn('flex min-h-[320px] flex-col', className)}>
-      <CardHeader className='pb-3'>
+    <Card className={cn('flex min-h-[320px] flex-col overflow-hidden border-border/70 bg-card/95', className)}>
+      <CardHeader className='border-b pb-3'>
         <div className='flex items-center justify-between gap-2'>
           <div>
-            <CardTitle className='text-base'>Queue</CardTitle>
-            <CardDescription>{queueTracks.length} tracks queued</CardDescription>
+            <CardTitle className='flex items-center gap-2 text-base'>
+              <ListMusic className='h-4 w-4 text-primary' />
+              Queue
+            </CardTitle>
+            <CardDescription>{queueTracks.length} tracks ready</CardDescription>
           </div>
           <Button
             variant='outline'
@@ -129,42 +219,46 @@ function QueuePanel({
       </CardHeader>
       <CardContent className='min-h-0 flex-1'>
         {queueTracks.length === 0 ? (
-          <div className='flex h-full items-center justify-center rounded-md border border-dashed p-5 text-sm text-muted-foreground'>
-            Add tracks to queue for controlled playback order.
+          <div className='flex h-full min-h-[260px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground'>
+            <TrackArtwork track={null} size='md' />
+            <span>Build a queue from the track list.</span>
           </div>
         ) : (
           <ScrollArea className='h-[360px] pr-2'>
-            <div className='space-y-2'>
+            <div className='space-y-1.5'>
               {queueTracks.map((track, index) => {
                 const isActive = activePath === track.path || queueCursor === index;
                 return (
                   <div
                     key={`${track.path}-${index}`}
                     className={cn(
-                      'rounded-md border p-2',
-                      isActive ? 'border-primary bg-primary/5' : 'bg-background/60'
+                      'rounded-lg border p-2 transition',
+                      isActive ? 'border-primary bg-primary/10' : 'bg-background/60 hover:bg-accent/40'
                     )}
                   >
-                    <div className='flex items-start gap-2'>
+                    <div className='flex items-center gap-2'>
                       <Button
                         type='button'
                         variant={isActive ? 'default' : 'outline'}
                         size='icon'
-                        className='h-7 w-7'
+                        className='h-8 w-8 shrink-0'
                         onClick={() => onPlayFromQueue(index, track.path)}
                         title='Play from queue'
                       >
                         <Play className='h-3.5 w-3.5' />
                       </Button>
+                      <TrackArtwork track={track} size='sm' active={isActive} />
                       <div className='min-w-0 flex-1'>
                         <p className='truncate text-sm font-medium'>{toDisplayLabel(track.name)}</p>
-                        <p className='truncate text-[11px] text-muted-foreground'>{track.path}</p>
+                        <p className='truncate text-[11px] text-muted-foreground'>
+                          {track.category} / {track.subcategory}
+                        </p>
                       </div>
                       <Button
                         type='button'
                         variant='ghost'
                         size='icon'
-                        className='h-7 w-7'
+                        className='h-8 w-8 shrink-0'
                         onClick={() => onRemoveFromQueue(track.path)}
                         title='Remove from queue'
                       >
@@ -305,6 +399,38 @@ export default function MusicPage() {
     return allTracks.filter((track) => getTrackSources(track).length > 1).length;
   }, [allTracks]);
 
+  const loopTrackCount = useMemo(() => {
+    return allTracks.filter((track) => typeof track.loopStart === 'number' && Number.isFinite(track.loopStart)).length;
+  }, [allTracks]);
+
+  const bpmTrackCount = useMemo(() => {
+    return allTracks.filter((track) => typeof track.bpm === 'number' && Number.isFinite(track.bpm)).length;
+  }, [allTracks]);
+
+  const categoryPreview = useMemo(() => {
+    return [...categoryCounts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, CATEGORY_PREVIEW_LIMIT);
+  }, [categoryCounts]);
+
+  const categoryArtworkTracks = useMemo(() => {
+    const rankArtwork = (track: MusicTrack) => {
+      if (track.artworkKind === 'character') return 5;
+      if (track.artworkKind === 'event' || track.artworkKind === 'world') return 4;
+      if (track.artworkKind === 'quest') return 3;
+      return 1;
+    };
+
+    const map = new Map<string, MusicTrack>();
+    for (const track of allTracks) {
+      const current = map.get(track.category);
+      if (!current || rankArtwork(track) > rankArtwork(current)) {
+        map.set(track.category, track);
+      }
+    }
+    return map;
+  }, [allTracks]);
+
   const filteredTracks = useMemo(() => {
     const q = search.trim().toLowerCase();
     const filtered = allTracks.filter((track) => {
@@ -364,6 +490,8 @@ export default function MusicPage() {
     return activePath ? trackByPath.get(activePath) || null : null;
   }, [activePath, trackByPath]);
 
+  const displayTrack = activeTrack || visibleTracks[0] || allTracks[0] || null;
+
   const activeTrackSources = useMemo(() => {
     return activeTrack ? getTrackSources(activeTrack) : [];
   }, [activeTrack]);
@@ -399,6 +527,8 @@ export default function MusicPage() {
 
   const activeTrackUrl =
     activeTrackSources[Math.min(activeSourceIndex, Math.max(activeTrackSources.length - 1, 0))] || '';
+  const activeProgressPercent =
+    activeTrack && duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
 
   const playTrackByPath = useCallback(
     (path: string, preferredSourceIndex?: number) => {
@@ -785,8 +915,11 @@ export default function MusicPage() {
 
   if (loading) {
     return (
-      <div className='flex min-h-[calc(100vh-4rem)] items-center justify-center bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.1),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(251,191,36,0.08),transparent_45%)]'>
-        <div className='text-center'>
+      <div className='flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background'>
+        <div className='rounded-lg border bg-card p-6 text-center shadow-sm'>
+          <div className='mb-4 flex justify-center'>
+            <TrackArtwork track={null} size='lg' />
+          </div>
           <Loader2 className='mx-auto h-9 w-9 animate-spin text-primary' />
           <p className='mt-3 text-sm text-muted-foreground'>Loading music library...</p>
         </div>
@@ -795,32 +928,90 @@ export default function MusicPage() {
   }
 
   return (
-    <div className='min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.1),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(251,191,36,0.08),transparent_45%)] pb-36'>
-      <div className='mx-auto w-full max-w-[1600px] space-y-4 p-4 sm:p-6'>
-        <Card className='border-border/60 bg-background/85 backdrop-blur'>
-          <CardContent className='p-5 sm:p-6'>
-            <div className='flex flex-wrap items-start justify-between gap-4'>
-              <div>
-                <div className='mb-2 flex items-center gap-2'>
-                  <div className='rounded-md border border-primary/30 bg-primary/10 p-2'>
-                    <Headphones className='h-4 w-4 text-primary' />
+    <div className='min-h-[calc(100vh-4rem)] bg-background pb-36'>
+      <div className='mx-auto w-full max-w-[1680px] space-y-4 p-4 sm:p-6'>
+        <Card className='overflow-hidden border-border/70 bg-card shadow-sm'>
+          <CardContent className='p-0'>
+            <div className='grid lg:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]'>
+              <div className='p-5 sm:p-6'>
+                <div className='flex flex-col gap-5 md:flex-row md:items-center'>
+                  <TrackArtwork track={displayTrack} size='lg' active={!!activeTrack} />
+                  <div className='min-w-0 flex-1'>
+                    <div className='mb-2 flex flex-wrap items-center gap-2'>
+                      <Badge variant='outline' className='gap-1.5'>
+                        <Headphones className='h-3.5 w-3.5' />
+                        Music
+                      </Badge>
+                      <Badge variant='outline'>{playerStatusLabel}</Badge>
+                    </div>
+                    <h1 className='text-2xl font-semibold sm:text-3xl'>Music Library</h1>
+                    <p className='mt-2 max-w-3xl text-sm text-muted-foreground'>
+                      Queue worlds, events, character themes, and loop-ready tracks from the datamine.
+                    </p>
                   </div>
-                  <h1 className='text-2xl font-semibold tracking-tight sm:text-3xl'>Music Control Deck</h1>
                 </div>
-                <p className='max-w-2xl text-sm text-muted-foreground'>
-                  Browse tracks by world/event, queue sets for continuous playback, and auto-fallback to alternate CDN
-                  URLs when a source fails.
-                </p>
+
+                <div className='mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+                  <LibraryMetric
+                    icon={ListMusic}
+                    label='Tracks'
+                    value={allTracks.length.toLocaleString()}
+                  />
+                  <LibraryMetric
+                    icon={Repeat}
+                    label='Loop Points'
+                    value={loopTrackCount.toLocaleString()}
+                  />
+                  <LibraryMetric
+                    icon={Gauge}
+                    label='BPM Tagged'
+                    value={bpmTrackCount.toLocaleString()}
+                  />
+                  <LibraryMetric
+                    icon={Activity}
+                    label='Fallbacks'
+                    value={fallbackCapableCount.toLocaleString()}
+                  />
+                </div>
               </div>
-              <div className='flex flex-wrap gap-2 text-xs'>
-                <Badge variant='outline' className='gap-1.5'>
-                  <ListMusic className='h-3.5 w-3.5' />
-                  {allTracks.length.toLocaleString()} tracks
-                </Badge>
-                <Badge variant='outline'>{fallbackCapableCount.toLocaleString()} with fallback</Badge>
-                <Badge variant='outline' className='text-destructive'>
-                  {failedPaths.size.toLocaleString()} failed
-                </Badge>
+
+              <div className='border-t bg-muted/20 p-5 lg:border-l lg:border-t-0 sm:p-6'>
+                <div className='flex items-start gap-4'>
+                  <TrackArtwork track={activeTrack} size='md' active={!!activeTrack} />
+                  <div className='min-w-0 flex-1'>
+                    <p className='text-xs font-medium text-muted-foreground'>Now Playing</p>
+                    {activeTrack ? (
+                      <>
+                        <p className='truncate text-lg font-semibold'>{toDisplayLabel(activeTrack.name)}</p>
+                        <p className='truncate text-xs text-muted-foreground'>{activeTrack.path}</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className='text-lg font-semibold'>Ready</p>
+                        <p className='text-xs text-muted-foreground'>Pick a track or press Space.</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className='mt-5 h-2 overflow-hidden rounded-sm bg-background'>
+                  <div className='h-full rounded-sm bg-primary' style={{ width: `${activeProgressPercent}%` }} />
+                </div>
+                <div className='mt-2 flex items-center justify-between text-xs text-muted-foreground'>
+                  <span>{formatClock(currentTime)}</span>
+                  <span>{formatClock(duration)}</span>
+                </div>
+
+                <div className='mt-4 grid grid-cols-2 gap-2 text-xs'>
+                  <div className='rounded-lg border bg-background/70 p-3'>
+                    <span className='text-muted-foreground'>Tempo</span>
+                    <p className='font-semibold'>{getTempoLabel(activeTrack?.bpm ?? null)}</p>
+                  </div>
+                  <div className='rounded-lg border bg-background/70 p-3'>
+                    <span className='text-muted-foreground'>Queue</span>
+                    <p className='font-semibold'>{queue.length.toLocaleString()} tracks</p>
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -835,53 +1026,104 @@ export default function MusicPage() {
           </Card>
         )}
 
+        {categoryPreview.length > 0 && (
+          <div className='grid gap-2 sm:grid-cols-2 lg:grid-cols-4'>
+            {categoryPreview.map(([category, count]) => {
+              const selected = categoryFilter === category;
+              const artworkTrack = categoryArtworkTracks.get(category) || null;
+              return (
+                <button
+                  key={category}
+                  type='button'
+                  onClick={() => {
+                    setCategoryFilter(category);
+                    setSubcategoryFilter(subcategoriesByCategory.get(category)?.[0] ?? 'all');
+                    setPage(1);
+                  }}
+                  className={cn(
+                    'group flex min-h-[86px] items-center gap-3 rounded-lg border bg-card p-3 text-left transition hover:bg-accent/50',
+                    selected && 'border-primary bg-primary/10'
+                  )}
+                >
+                  <TrackArtwork track={artworkTrack} size='md' active={selected} />
+                  <div className='min-w-0 flex-1'>
+                    <p className='truncate text-sm font-semibold'>{category}</p>
+                    <p className='text-xs text-muted-foreground'>{count.toLocaleString()} tracks</p>
+                    <div className='mt-2 h-1 overflow-hidden rounded-sm bg-muted'>
+                      <div
+                        className='h-full rounded-sm bg-primary'
+                        style={{ width: `${Math.max(8, Math.min(100, (count / Math.max(allTracks.length, 1)) * 360))}%` }}
+                      />
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className='grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[260px_minmax(0,1fr)_320px]'>
           <div className='grid gap-4 sm:grid-cols-2 xl:sticky xl:top-20 xl:grid-cols-1 xl:self-start'>
-          <Card className='flex min-h-[280px] flex-col'>
-            <CardHeader className='pb-3'>
-              <CardTitle className='text-base'>Categories</CardTitle>
-              <CardDescription>Click to navigate</CardDescription>
+          <Card className='flex min-h-[280px] flex-col overflow-hidden border-border/70 bg-card/95'>
+            <CardHeader className='border-b pb-3'>
+              <CardTitle className='flex items-center gap-2 text-base'>
+                <Disc3 className='h-4 w-4 text-primary' />
+                Worlds
+              </CardTitle>
+              <CardDescription>{categories.length} groups</CardDescription>
             </CardHeader>
             <CardContent className='min-h-0 flex-1'>
               <ScrollArea className='h-[320px] pr-2'>
-                <div className='space-y-1.5'>
+                <div className='space-y-1.5 py-1'>
                   <Button
                     variant={categoryFilter === 'all' ? 'default' : 'outline'}
                     size='sm'
-                    className='w-full justify-between'
+                    className='h-10 w-full justify-between'
                     onClick={() => {
                       setCategoryFilter('all');
                       setSubcategoryFilter('all');
                       setPage(1);
                     }}
                   >
-                    <span>All Categories</span>
+                    <span className='flex items-center gap-2'>
+                      <Music2 className='h-3.5 w-3.5' />
+                      All Worlds
+                    </span>
                     <Badge variant='secondary'>{allTracks.length}</Badge>
                   </Button>
-                  {categories.map((category) => (
-                    <Button
-                      key={category}
-                      variant={categoryFilter === category ? 'default' : 'outline'}
-                      size='sm'
-                      className='w-full justify-between'
-                      onClick={() => {
-                        setCategoryFilter(category);
-                        setSubcategoryFilter(subcategoriesByCategory.get(category)?.[0] ?? 'all');
-                        setPage(1);
-                      }}
-                    >
-                      <span className='truncate text-left'>{category}</span>
-                      <Badge variant='secondary'>{categoryCounts.get(category) || 0}</Badge>
-                    </Button>
-                  ))}
+                  {categories.map((category) => {
+                    const artworkTrack = categoryArtworkTracks.get(category) || null;
+                    return (
+                      <Button
+                        key={category}
+                        variant={categoryFilter === category ? 'default' : 'outline'}
+                        size='sm'
+                        className='h-10 w-full justify-between gap-2'
+                        onClick={() => {
+                          setCategoryFilter(category);
+                          setSubcategoryFilter(subcategoriesByCategory.get(category)?.[0] ?? 'all');
+                          setPage(1);
+                        }}
+                      >
+                        <span className='flex min-w-0 items-center gap-2'>
+                          <TrackArtwork track={artworkTrack} size='xs' active={categoryFilter === category} />
+                          <span className='truncate text-left'>{category}</span>
+                        </span>
+                        <Badge variant='secondary'>{categoryCounts.get(category) || 0}</Badge>
+                      </Button>
+                    );
+                  })}
                 </div>
               </ScrollArea>
             </CardContent>
           </Card>
 
-          <Card className='flex min-h-[280px] flex-col'>
-            <CardHeader className='pb-3'>
-              <CardTitle className='text-base'>Subcategories</CardTitle>
+          <Card className='flex min-h-[280px] flex-col overflow-hidden border-border/70 bg-card/95'>
+            <CardHeader className='border-b pb-3'>
+              <CardTitle className='flex items-center gap-2 text-base'>
+                <SlidersHorizontal className='h-4 w-4 text-primary' />
+                Sets
+              </CardTitle>
               <CardDescription className='truncate'>
                 {categoryFilter === 'all' ? 'All categories' : categoryFilter}
               </CardDescription>
@@ -892,7 +1134,7 @@ export default function MusicPage() {
                   <Button
                     variant={safeSubcategoryFilter === 'all' ? 'default' : 'outline'}
                     size='sm'
-                    className='w-full justify-between'
+                    className='h-10 w-full justify-between'
                     onClick={() => {
                       setSubcategoryFilter('all');
                       setPage(1);
@@ -908,7 +1150,7 @@ export default function MusicPage() {
                       key={subcategory}
                       variant={safeSubcategoryFilter === subcategory ? 'default' : 'outline'}
                       size='sm'
-                      className='w-full justify-between'
+                      className='h-10 w-full justify-between gap-2'
                       onClick={() => {
                         setSubcategoryFilter(subcategory);
                         setPage(1);
@@ -925,11 +1167,11 @@ export default function MusicPage() {
           </div>
 
           <div className='space-y-4'>
-            <Card>
-              <CardHeader className='pb-3'>
+            <Card className='overflow-hidden border-border/70 bg-card/95'>
+              <CardHeader className='border-b pb-3'>
                 <CardTitle className='flex items-center gap-2 text-base'>
                   <Filter className='h-4 w-4 text-primary' />
-                  Command Bar
+                  Search & Filters
                 </CardTitle>
               </CardHeader>
               <CardContent className='space-y-3'>
@@ -973,7 +1215,7 @@ export default function MusicPage() {
                     size='sm'
                     onClick={() => setCompactRows((prev) => !prev)}
                   >
-                    {compactRows ? 'Compact Rows: On' : 'Compact Rows: Off'}
+                    {compactRows ? 'Comfort Rows' : 'Compact Rows'}
                   </Button>
                   <Button
                     variant={fallbackOnly ? 'default' : 'outline'}
@@ -984,7 +1226,7 @@ export default function MusicPage() {
                     }}
                     className='gap-1.5'
                   >
-                    Fallback Only
+                    Fallbacks
                     <Badge variant='secondary'>{fallbackCapableCount}</Badge>
                   </Button>
                   <Button
@@ -996,7 +1238,7 @@ export default function MusicPage() {
                     }}
                     className='gap-1.5'
                   >
-                    Failed Only
+                    Failed
                     <Badge variant='secondary'>{failedPaths.size}</Badge>
                   </Button>
                   <Button
@@ -1024,19 +1266,22 @@ export default function MusicPage() {
                     {showMobileQueue ? 'Hide Queue' : `Show Queue (${queue.length})`}
                   </Button>
                   <div className='ml-auto hidden items-center gap-2 text-[11px] text-muted-foreground xl:flex'>
-                    <span className='rounded border px-2 py-0.5'>/ search</span>
-                    <span className='rounded border px-2 py-0.5'>Space play/pause</span>
-                    <span className='rounded border px-2 py-0.5'>J/K prev/next</span>
+                    <span className='rounded-md border px-2 py-1'>/ search</span>
+                    <span className='rounded-md border px-2 py-1'>Space play</span>
+                    <span className='rounded-md border px-2 py-1'>J/K skip</span>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className='pb-3'>
+            <Card className='overflow-hidden border-border/70 bg-card/95'>
+              <CardHeader className='border-b pb-3'>
                 <div className='flex flex-wrap items-center justify-between gap-2'>
                   <div>
-                    <CardTitle className='text-base'>Track List</CardTitle>
+                    <CardTitle className='flex items-center gap-2 text-base'>
+                      <Music2 className='h-4 w-4 text-primary' />
+                      Tracks
+                    </CardTitle>
                     <CardDescription>
                       Showing {rangeStart}-{rangeEnd} of {filteredTracks.length.toLocaleString()} tracks
                     </CardDescription>
@@ -1080,7 +1325,7 @@ export default function MusicPage() {
               <CardContent className='space-y-2'>
                 {visibleTracks.length > 0 ? (
                   <div className='overflow-hidden rounded-lg border bg-background/30'>
-                    <div className='grid grid-cols-[44px_minmax(0,1fr)] items-center gap-2 border-b bg-muted/30 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground xl:grid-cols-[44px_minmax(0,1fr)_110px]'>
+                    <div className='grid grid-cols-[44px_minmax(0,1fr)] items-center gap-2 border-b bg-muted/30 px-3 py-2 text-[11px] font-medium text-muted-foreground xl:grid-cols-[44px_minmax(0,1fr)_110px]'>
                       <span>Play</span>
                       <span>Track</span>
                       <span className='hidden text-right xl:block'>Actions</span>
@@ -1091,12 +1336,13 @@ export default function MusicPage() {
                       const isActive = activePath === track.path;
                       const isQueued = queueSet.has(track.path);
                       const isFailed = failedPaths.has(track.path);
-                      const toneClass = getToneClass(track.category);
                       const sourceIndex = sourceIndexByPath[track.path] ?? 0;
                       const rowSources = getTrackSources(track);
                       const rowSourceUrl = rowSources[Math.min(sourceIndex, Math.max(rowSources.length - 1, 0))] || track.url;
                       const durationForRow = durationByPath[track.path] || 0;
                       const rowNumber = rangeStart + index;
+                      const rowProgress =
+                        isActive && duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
                       const sourceBadgeClass = isFailed
                         ? 'border-destructive/50 bg-destructive/10 text-destructive'
                         : sourceIndex > 0
@@ -1107,9 +1353,9 @@ export default function MusicPage() {
                         <div
                           key={track.path}
                           className={cn(
-                            'rounded-lg border transition',
+                            'relative overflow-hidden rounded-lg border transition',
                             compactRows ? 'p-2' : 'p-3',
-                            isActive ? 'border-primary bg-primary/5 shadow-sm' : 'bg-background/70 hover:bg-accent/40'
+                            isActive ? 'border-primary bg-primary/10 shadow-sm' : 'bg-background/70 hover:bg-accent/40'
                           )}
                         >
                           <div className='flex flex-wrap items-start gap-3'>
@@ -1130,16 +1376,7 @@ export default function MusicPage() {
 
                             <div className='min-w-0 flex-1'>
                               <div className='flex items-start gap-3'>
-                                {!compactRows && (
-                                  <div
-                                    className={cn(
-                                      'mt-0.5 flex h-11 w-16 shrink-0 items-center justify-center rounded-md border bg-gradient-to-br',
-                                      toneClass
-                                    )}
-                                  >
-                                    <Music2 className='h-4 w-4 text-foreground/80' />
-                                  </div>
-                                )}
+                                <TrackArtwork track={track} size={compactRows ? 'sm' : 'md'} active={isActive} />
                                 <div className='min-w-0 flex-1'>
                                   <p className={cn('truncate font-semibold', compactRows ? 'text-[13px]' : 'text-sm')}>
                                     <span className='mr-1.5 font-mono text-[11px] text-muted-foreground'>#{rowNumber}</span>
@@ -1152,6 +1389,14 @@ export default function MusicPage() {
                               <div className={cn('flex flex-wrap items-center gap-1.5', compactRows ? 'mt-1.5' : 'mt-2')}>
                                 <Badge variant='outline'>{track.category}</Badge>
                                 <Badge variant='outline'>{track.subcategory}</Badge>
+                                {track.artworkKind !== 'fallback' && (
+                                  <Badge variant='secondary'>{getArtworkLabel(track.artworkKind)}</Badge>
+                                )}
+                                {track.bpm !== null && Number.isFinite(track.bpm) && (
+                                  <Badge variant='outline'>
+                                    {Math.round(track.bpm)} BPM / {getTempoLabel(track.bpm)}
+                                  </Badge>
+                                )}
                                 {typeof track.loopStart === 'number' && Number.isFinite(track.loopStart) && (
                                   <Badge variant='outline' className='border-cyan-500/35 bg-cyan-500/10 text-cyan-700'>
                                     {typeof track.loopEnd === 'number' && Number.isFinite(track.loopEnd)
@@ -1204,6 +1449,11 @@ export default function MusicPage() {
                               </Button>
                             </div>
                           </div>
+                          {rowProgress > 0 && (
+                            <div className='absolute inset-x-0 bottom-0 h-1 bg-muted'>
+                              <div className='h-full bg-primary' style={{ width: `${rowProgress}%` }} />
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1244,41 +1494,23 @@ export default function MusicPage() {
       </div>
 
       <div className='fixed bottom-3 left-3 right-3 z-40'>
-        <div className='mx-auto max-w-[1600px]'>
-          <Card className='border-border/70 bg-background/95 shadow-2xl backdrop-blur'>
+        <div className='mx-auto max-w-[1680px]'>
+          <Card className='overflow-hidden border-border/70 bg-card/95 shadow-2xl backdrop-blur'>
             <CardContent className='p-3 sm:p-4'>
-              <div className='grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_auto]'>
-                <div className='min-w-0'>
-                  <p className='text-[11px] uppercase tracking-wide text-muted-foreground'>Now Playing</p>
-                  {activeTrack ? (
-                    <>
-                      <p className='truncate text-sm font-semibold'>{toDisplayLabel(activeTrack.name)}</p>
-                      <p className='truncate text-[11px] text-muted-foreground'>{activeTrack.path}</p>
-                      <div className='mt-1 flex flex-wrap items-center gap-1.5'>
-                        <Badge variant='outline'>{activeTrack.category}</Badge>
-                        <Badge variant='outline'>{activeTrack.subcategory}</Badge>
-                        {loopReady && (
-                          <Badge variant='outline' className='border-cyan-500/40 bg-cyan-500/10 text-cyan-700'>
-                            {activeLoopEnd !== null
-                              ? `Loop ${formatClock(activeLoopStart ?? 0)} - ${formatClock(activeLoopEnd)}`
-                              : `Loop from ${formatClock(activeLoopStart ?? 0)}`}
-                          </Badge>
-                        )}
-                        <Badge
-                          variant='outline'
-                          className={cn(
-                            activeSourceIndex > 0
-                              ? 'border-amber-500/40 bg-amber-500/10 text-amber-600'
-                              : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600'
-                          )}
-                        >
-                          {getSourceLabel(activeSourceIndex)}
-                        </Badge>
-                      </div>
-                    </>
-                  ) : (
-                    <p className='text-sm text-muted-foreground'>Select a track or press Space to start playback.</p>
-                  )}
+              <div className='grid gap-3 xl:grid-cols-[minmax(240px,0.85fr)_minmax(0,1.35fr)_auto]'>
+                <div className='flex min-w-0 items-center gap-3'>
+                  <TrackArtwork track={activeTrack} size='sm' active={!!activeTrack} />
+                  <div className='min-w-0'>
+                    <p className='text-[11px] font-medium text-muted-foreground'>Now Playing</p>
+                    {activeTrack ? (
+                      <>
+                        <p className='truncate text-sm font-semibold'>{toDisplayLabel(activeTrack.name)}</p>
+                        <p className='truncate text-[11px] text-muted-foreground'>{activeTrack.category} / {activeTrack.subcategory}</p>
+                      </>
+                    ) : (
+                      <p className='text-sm text-muted-foreground'>Select a track or press Space.</p>
+                    )}
+                  </div>
                 </div>
 
                 <div className='flex min-w-0 flex-col justify-center'>
@@ -1290,20 +1522,25 @@ export default function MusicPage() {
                     disabled={!activeTrack}
                     className='w-full'
                   />
-                  <div className='mt-1 flex items-center justify-between text-[11px] text-muted-foreground'>
+                  <div className='mt-1 flex items-center justify-between gap-3 text-[11px] text-muted-foreground'>
                     <span>{formatClock(currentTime)}</span>
-                    <span>{playerStatusLabel}</span>
+                    <span className='flex min-w-0 items-center gap-1 truncate'>
+                      <Timer className='h-3 w-3 shrink-0' />
+                      {playerStatusLabel}
+                      {loopReady && activeTrack ? ` / ${loopEnabled ? 'Looping' : 'Loop ready'}` : ''}
+                    </span>
                     <span>{formatClock(duration)}</span>
                   </div>
                 </div>
 
-                <div className='flex flex-wrap items-center gap-2 lg:justify-end'>
+                <div className='flex flex-wrap items-center gap-2 xl:justify-end'>
                   <Button type='button' variant='outline' size='icon' onClick={playPrevious} title='Previous (J)'>
                     <SkipBack className='h-4 w-4' />
                   </Button>
                   <Button
                     type='button'
                     size='icon'
+                    className='h-10 w-10'
                     onClick={togglePlayback}
                     disabled={!activeTrack && playbackOrderPaths.length === 0 && queue.length === 0}
                     title='Play/Pause (Space)'
@@ -1332,7 +1569,7 @@ export default function MusicPage() {
                     Loop
                   </Button>
 
-                  <div className='ml-1 flex items-center gap-2 rounded-md border px-2 py-1'>
+                  <div className='ml-1 flex items-center gap-2 rounded-lg border bg-background/70 px-2 py-1'>
                     <Button
                       type='button'
                       variant='ghost'

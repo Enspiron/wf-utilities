@@ -44,6 +44,7 @@ import {
   type SpriteMetadata,
   type TimelineSequence,
 } from '@/lib/sprite-animation';
+import { ASSET_CDN_ROOT, normalizeAssetPath } from '@/lib/asset-url';
 import { cn } from '@/lib/utils';
 
 type ScopeFilter = 'all' | 'battle-boss' | 'battle-funnel' | 'sprite-sheet' | 'character';
@@ -51,6 +52,7 @@ type ImageStatus = 'idle' | 'loading' | 'loaded' | 'error';
 type MetadataStatus = 'idle' | 'loading' | 'loaded' | 'missing' | 'error';
 type BackgroundMode = 'checker' | 'transparent' | 'black' | 'white';
 type ViewMode = 'metadata' | 'grid';
+type CandidateViewMode = 'grid' | 'list';
 type GifExportAction = 'download' | 'open';
 
 type SpriteAsset = {
@@ -64,6 +66,21 @@ type SpriteAsset = {
   tags: string[];
   sources: string[];
   context: string[];
+  preview?: SpriteSheetPreview;
+};
+
+type SpriteSheetPreview = {
+  source: string;
+  sequence: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  r?: boolean;
+  fx?: number;
+  fy?: number;
+  fw?: number;
+  fh?: number;
 };
 
 type SpriteSheetPayload = {
@@ -118,10 +135,12 @@ type MetadataInfo = {
   error?: string;
 };
 
-const CDN_ROOT = 'https://wfjukebox.b-cdn.net';
+const CDN_ROOT = ASSET_CDN_ROOT;
 const LIST_LIMIT = 260;
 const DEFAULT_METADATA_FRAME_MS = 16;
 const MAX_GIF_FRAMES = 360;
+const GRID_PREVIEW_WIDTH = 168;
+const GRID_PREVIEW_HEIGHT = 96;
 const DEFAULT_SETTINGS: SheetSettings = {
   frameWidth: 128,
   frameHeight: 128,
@@ -141,7 +160,7 @@ const SCOPE_OPTIONS: Array<{ value: ScopeFilter; label: string }> = [
   { value: 'battle-boss', label: 'Battle boss' },
   { value: 'battle-funnel', label: 'Battle funnel' },
   { value: 'sprite-sheet', label: 'sprite_sheet paths' },
-  { value: 'character', label: 'Character UI' },
+  { value: 'character', label: 'Character pixelart' },
 ];
 
 function clamp(value: number, min: number, max: number): number {
@@ -153,19 +172,23 @@ function hasImageExtension(value: string): boolean {
   return /\.(png|jpe?g|webp|gif|bmp)$/i.test(value);
 }
 
-function normalizeAssetPath(raw: string): string {
-  const trimmed = raw.trim().split(/[?#]/)[0].replace(/[),.;]+$/, '');
-  if (trimmed.startsWith(CDN_ROOT)) {
-    return trimmed.slice(CDN_ROOT.length).replace(/^\/+/, '');
+function getLocalCharacterPixelartSource(raw: string): string | null {
+  const assetPath = normalizeAssetPath(raw);
+  if (!assetPath) return null;
+
+  const withoutExt = assetPath.replace(/\.[a-z0-9]{2,5}$/i, '');
+  if (!/^character\/[^/]+\/pixelart\/(?:sprite_sheet|special_sprite_sheet)$/i.test(withoutExt)) {
+    return null;
   }
-  return trimmed.replace(/^\/+/, '');
+
+  return `/assets/${hasImageExtension(assetPath) ? assetPath : `${withoutExt}.png`}`;
 }
 
 function buildImageSources(raw: string): string[] {
   const assetPath = normalizeAssetPath(raw);
   if (!assetPath) return [];
 
-  if (/^https?:\/\//i.test(raw)) {
+  if (/^https?:\/\//i.test(raw) && !raw.trim().startsWith(CDN_ROOT)) {
     const noQuery = raw.trim().split(/[?#]/)[0];
     if (hasImageExtension(noQuery)) return [noQuery];
     const base = noQuery.replace(/\.[a-z0-9]{2,5}$/i, '');
@@ -177,6 +200,8 @@ function buildImageSources(raw: string): string[] {
     ? [assetPath]
     : [`${withoutExt}.png`, `${withoutExt}.jpg`, `${withoutExt}.webp`];
   const sources = new Set<string>();
+  const localSource = getLocalCharacterPixelartSource(assetPath);
+  if (localSource) sources.add(localSource);
 
   for (const pathValue of paths) {
     sources.add(`${CDN_ROOT}/${pathValue}`);
@@ -186,6 +211,16 @@ function buildImageSources(raw: string): string[] {
   }
 
   return Array.from(sources);
+}
+
+function getPreferredImageSources(asset: Pick<SpriteAsset, 'path' | 'sources'>): string[] {
+  return Array.from(new Set([...buildImageSources(asset.path), ...(asset.sources || [])]));
+}
+
+function getPreferredPreview(asset: SpriteAsset): SpriteSheetPreview | undefined {
+  if (!asset.preview) return undefined;
+  const localSource = getLocalCharacterPixelartSource(asset.path);
+  return localSource ? { ...asset.preview, source: localSource } : asset.preview;
 }
 
 function humanizePath(value: string): string {
@@ -514,6 +549,65 @@ function matchesScope(asset: SpriteAsset, scope: ScopeFilter): boolean {
   return true;
 }
 
+function getSearchGroups(value: string): string[][] {
+  return value
+    .split(',')
+    .map((group) =>
+      group
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .map((token) => token.trim())
+        .filter(Boolean)
+    )
+    .filter((group) => group.length > 0);
+}
+
+function getPreviewDisplaySize(preview: SpriteSheetPreview): { width: number; height: number } {
+  return {
+    width: preview.fw || (preview.r ? preview.h : preview.w),
+    height: preview.fh || (preview.r ? preview.w : preview.h),
+  };
+}
+
+function getPreviewCropStyle(preview: SpriteSheetPreview): CSSProperties {
+  const displaySize = getPreviewDisplaySize(preview);
+  const scale = clamp(
+    Math.min(
+      (GRID_PREVIEW_WIDTH - 12) / Math.max(1, displaySize.width),
+      (GRID_PREVIEW_HEIGHT - 12) / Math.max(1, displaySize.height)
+    ),
+    0.15,
+    1.75
+  );
+
+  return {
+    width: preview.w,
+    height: preview.h,
+    backgroundImage: `url("${preview.source}")`,
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: `-${preview.x}px -${preview.y}px`,
+    imageRendering: 'pixelated',
+    transform: `scale(${scale})${preview.r ? ' rotate(-90deg)' : ''}`,
+    transformOrigin: 'center',
+  };
+}
+
+function getFallbackPreviewStyle(asset: SpriteAsset): CSSProperties | undefined {
+  const source = getPreferredImageSources(asset)[0];
+  if (!source) return undefined;
+
+  return {
+    width: '100%',
+    height: '100%',
+    backgroundImage: `url("${source}")`,
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'center',
+    backgroundSize: 'contain',
+    imageRendering: 'pixelated',
+  };
+}
+
 function AssetRow({
   asset,
   active,
@@ -775,6 +869,81 @@ function AtlasFrameThumb({
   );
 }
 
+function AssetPreviewCard({
+  asset,
+  active,
+  onSelect,
+}: {
+  asset: SpriteAsset;
+  active: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const element = buttonRef.current;
+    if (!element) return;
+
+    if (!('IntersectionObserver' in window)) {
+      const timer = setTimeout(() => setVisible(true), 0);
+      return () => clearTimeout(timer);
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setVisible(Boolean(entry?.isIntersecting)),
+      { rootMargin: '280px' }
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const preview = getPreferredPreview(asset);
+  const previewStyle = visible && preview ? getPreviewCropStyle(preview) : undefined;
+  const fallbackStyle = visible && !preview ? getFallbackPreviewStyle(asset) : undefined;
+  const previewLabel = preview?.sequence || (fallbackStyle ? 'sheet' : '');
+
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      className={cn(
+        'grid h-[188px] w-full grid-rows-[96px_minmax(0,1fr)] overflow-hidden rounded-md border bg-background/70 text-left transition-colors [contain-intrinsic-size:188px_168px] [content-visibility:auto]',
+        active ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-accent'
+      )}
+      onClick={() => onSelect(asset.id)}
+      title={`${asset.label} - ${asset.path}`}
+    >
+      <div className="relative flex h-24 items-center justify-center overflow-hidden border-b bg-muted/30">
+        {previewStyle ? (
+          <span className="block shrink-0" style={previewStyle} />
+        ) : fallbackStyle ? (
+          <span className="block h-full w-full" style={fallbackStyle} />
+        ) : (
+          <ImageIcon className="h-6 w-6 text-muted-foreground/50" />
+        )}
+        {previewLabel && (
+          <span className="absolute bottom-1 left-1 max-w-[calc(100%-0.5rem)] truncate rounded border bg-background/90 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            {previewLabel}
+          </span>
+        )}
+      </div>
+      <div className="grid min-h-0 content-between gap-2 p-2">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold">{asset.label}</p>
+          <p className="mt-1 line-clamp-2 break-all text-[10px] leading-3 text-muted-foreground">{asset.path}</p>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-[10px] text-muted-foreground">{asset.tags[0] || asset.category}</span>
+          <Badge variant="outline" className="h-5 shrink-0 rounded-md px-1.5 text-[10px]">
+            {asset.lang}
+          </Badge>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 export default function SpriteSheetsClient() {
   const [assets, setAssets] = useState<SpriteAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -784,6 +953,7 @@ export default function SpriteSheetsClient() {
   const [scope, setScope] = useState<ScopeFilter>('battle-boss');
   const [customPath, setCustomPath] = useState('');
   const [activeCustomPath, setActiveCustomPath] = useState('');
+  const [candidateViewMode, setCandidateViewMode] = useState<CandidateViewMode>('grid');
   const [settings, setSettings] = useState<SheetSettings>(DEFAULT_SETTINGS);
   const [currentFrame, setCurrentFrame] = useState(0);
   const [playing, setPlaying] = useState(true);
@@ -833,12 +1003,12 @@ export default function SpriteSheetsClient() {
   }, [loadAssets]);
 
   const filteredAssets = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const searchGroups = getSearchGroups(search);
     return assets.filter((asset) => {
       if (!matchesScope(asset, scope)) return false;
-      if (!query) return true;
+      if (!searchGroups.length) return true;
       const blob = `${asset.label} ${asset.path} ${asset.file} ${asset.tags.join(' ')}`.toLowerCase();
-      return blob.includes(query);
+      return searchGroups.some((group) => group.every((token) => blob.includes(token)));
     });
   }, [assets, scope, search]);
 
@@ -867,7 +1037,14 @@ export default function SpriteSheetsClient() {
         context: [],
       };
     }
-    return selectedAsset;
+    if (!selectedAsset) return null;
+
+    const sources = getPreferredImageSources(selectedAsset);
+    return {
+      ...selectedAsset,
+      sources: sources.length ? sources : selectedAsset.sources,
+      preview: getPreferredPreview(selectedAsset),
+    };
   }, [activeCustomPath, selectedAsset]);
 
   const sourceKey = activeDescriptor ? activeDescriptor.sources.join('|') : '';
@@ -1387,24 +1564,49 @@ export default function SpriteSheetsClient() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{filteredAssets.length} matches</span>
-                {filteredAssets.length > LIST_LIMIT && <span>showing {LIST_LIMIT}</span>}
+              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <div className="min-w-0">
+                  <span>{filteredAssets.length} matches</span>
+                  {filteredAssets.length > LIST_LIMIT && <span> - showing {LIST_LIMIT}</span>}
+                </div>
+                <div className="grid shrink-0 grid-cols-2 gap-1 rounded-md border bg-background p-1">
+                  <Button
+                    type="button"
+                    variant={candidateViewMode === 'grid' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setCandidateViewMode('grid')}
+                  >
+                    Grid
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={candidateViewMode === 'list' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setCandidateViewMode('list')}
+                  >
+                    List
+                  </Button>
+                </div>
               </div>
 
               <ScrollArea className="h-[650px] pr-2">
-                <div className="grid gap-2">
+                <div className={cn('grid gap-2', candidateViewMode === 'grid' && !loading ? 'grid-cols-2' : '')}>
                   {loading && (
-                    <div className="flex h-28 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
+                    <div className="col-span-full flex h-28 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Loading candidates
                     </div>
                   )}
-                  {!loading && filteredAssets.slice(0, LIST_LIMIT).map((asset) => (
+                  {!loading && candidateViewMode === 'list' && filteredAssets.slice(0, LIST_LIMIT).map((asset) => (
                     <AssetRow key={asset.id} asset={asset} active={asset.id === selectedId} onSelect={activateAsset} />
                   ))}
+                  {!loading && candidateViewMode === 'grid' && filteredAssets.slice(0, LIST_LIMIT).map((asset) => (
+                    <AssetPreviewCard key={asset.id} asset={asset} active={asset.id === selectedId} onSelect={activateAsset} />
+                  ))}
                   {!loading && filteredAssets.length === 0 && (
-                    <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                    <div className="col-span-full rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
                       No matching paths found.
                     </div>
                   )}

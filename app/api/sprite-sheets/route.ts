@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { NextResponse } from 'next/server';
 import { DATA_CACHE_HEADERS, DATA_CDN_BASE } from '@/lib/data-source';
+import { ASSET_CDN_ROOT, normalizeAssetPath } from '@/lib/asset-url';
 
 type Lang = 'jp' | 'en';
 
@@ -17,6 +18,7 @@ type SpriteSheetCandidate = {
   sources: string[];
   context: string[];
   availability?: AssetAvailability;
+  preview?: SpriteSheetPreview;
 };
 
 type MutableCandidate = SpriteSheetCandidate & {
@@ -32,16 +34,32 @@ type AssetAvailability = {
   image: boolean;
   atlas: boolean;
   parts: boolean;
+  frame?: boolean;
   timeline: boolean;
+  metadataKind?: 'parts' | 'frame';
   fullMetadata: boolean;
 };
 
-const CDN_ROOT = 'https://wfjukebox.b-cdn.net';
+type SpriteSheetPreview = {
+  source: string;
+  sequence: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  r?: boolean;
+  fx?: number;
+  fy?: number;
+  fw?: number;
+  fh?: number;
+};
+
+const CDN_ROOT = ASSET_CDN_ROOT;
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|bmp)$/i;
 const BAD_EXT_RE = /\.(mp3|ogg|wav|m4a|aac|flac|awb|acb|json|orderedmap|txt|csv)$/i;
 const PATH_TOKEN_RE = /https?:\/\/[^\s"'`]+|\/?[A-Za-z0-9._$-]+(?:\/[A-Za-z0-9._$-]+)+/g;
 const CACHE_MS = 10 * 60 * 1000;
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 6;
 const PREBUILT_INDEX_RELATIVE_PATH = 'sprite-sheets-index.json';
 
 type PayloadSource = 'local-scan' | 'local-scan-unverified' | 'prebuilt-local' | 'prebuilt-remote';
@@ -57,21 +75,40 @@ type CachedPayload = {
 let cachedPayload: CachedPayload | null = null;
 let cachedAssetTree: { at: number; index: AssetTreeIndex | null } | null = null;
 
-function normalizeAssetPath(raw: string): string {
-  const cleaned = raw.trim().split(/[?#]/)[0].replace(/[),.;]+$/, '');
-  if (!cleaned || cleaned === '(None)') return '';
-  if (cleaned.startsWith(CDN_ROOT)) {
-    return cleaned.slice(CDN_ROOT.length).replace(/^\/+/, '');
-  }
-  return cleaned.replace(/^\/+/, '');
-}
-
 function normalizeTreePath(raw: string): string {
   return raw.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
 }
 
 function stripImageExtension(assetPath: string): string {
   return normalizeAssetPath(assetPath).replace(IMAGE_EXT_RE, '');
+}
+
+function getCharacterPixelartInfo(assetPath: string) {
+  const normalized = stripImageExtension(assetPath).toLowerCase();
+  const match = normalized.match(/^character\/([^/]+)\/pixelart\/(sprite_sheet|special_sprite_sheet)$/);
+  if (!match) return null;
+
+  const directory = normalized.split('/').slice(0, -1).join('/');
+  const sheetName = match[2];
+  const prefix = sheetName === 'special_sprite_sheet' ? 'special' : 'pixelart';
+
+  return {
+    characterId: match[1],
+    sheetName,
+    prefix,
+    directory,
+    atlas: `${normalized}.atlas.json`,
+    frame: `${directory}/${prefix}.frame.json`,
+    timeline: `${directory}/${prefix}.timeline.json`,
+  };
+}
+
+function getLocalCharacterPixelartSource(assetPath: string): string | null {
+  const normalized = normalizeAssetPath(assetPath);
+  if (!getCharacterPixelartInfo(normalized)) return null;
+
+  const withoutExt = normalized.replace(IMAGE_EXT_RE, '');
+  return `/assets/${IMAGE_EXT_RE.test(normalized) ? normalized : `${withoutExt}.png`}`;
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -156,6 +193,35 @@ function coerceStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
 }
 
+function coerceFiniteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function coercePreview(value: unknown): SpriteSheetPreview | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  const x = coerceFiniteNumber(raw.x);
+  const y = coerceFiniteNumber(raw.y);
+  const w = coerceFiniteNumber(raw.w);
+  const h = coerceFiniteNumber(raw.h);
+  if (typeof raw.source !== 'string' || typeof raw.sequence !== 'string') return undefined;
+  if (x === undefined || y === undefined || w === undefined || h === undefined) return undefined;
+
+  return {
+    source: raw.source,
+    sequence: raw.sequence,
+    x,
+    y,
+    w,
+    h,
+    r: typeof raw.r === 'boolean' ? raw.r : undefined,
+    fx: coerceFiniteNumber(raw.fx),
+    fy: coerceFiniteNumber(raw.fy),
+    fw: coerceFiniteNumber(raw.fw),
+    fh: coerceFiniteNumber(raw.fh),
+  };
+}
+
 function normalizePrebuiltPayload(raw: unknown, source: PayloadSource): Omit<CachedPayload, 'at' | 'version'> | null {
   if (!raw || typeof raw !== 'object') return null;
   const payload = raw as { assets?: unknown; scannedFiles?: unknown };
@@ -170,6 +236,11 @@ function normalizePrebuiltPayload(raw: unknown, source: PayloadSource): Omit<Cac
     const assetPath = normalizeAssetPath(candidate.path);
     if (!assetPath) continue;
 
+    const prebuiltSources = coerceStringArray(candidate.sources);
+    const sources = Array.from(new Set([...buildImageSources(assetPath), ...prebuiltSources]));
+    const preview = coercePreview(candidate.preview);
+    const localPreviewSource = getLocalCharacterPixelartSource(assetPath);
+
     assets.push({
       id: typeof candidate.id === 'string' ? candidate.id : assetPath.toLowerCase(),
       path: assetPath,
@@ -179,9 +250,10 @@ function normalizePrebuiltPayload(raw: unknown, source: PayloadSource): Omit<Cac
       lang: candidate.lang === 'jp' ? 'jp' : 'en',
       sourceKey: typeof candidate.sourceKey === 'string' ? candidate.sourceKey : '',
       tags: coerceStringArray(candidate.tags),
-      sources: coerceStringArray(candidate.sources).length ? coerceStringArray(candidate.sources) : buildImageSources(assetPath),
+      sources: sources.length ? sources : prebuiltSources,
       context: coerceStringArray(candidate.context),
       availability: candidate.availability,
+      preview: preview && localPreviewSource ? { ...preview, source: localPreviewSource } : preview,
     });
   }
 
@@ -220,15 +292,21 @@ function getAssetAvailability(assetPath: string, assetTree: AssetTreeIndex): Ass
   const base = normalizeTreePath(stripImageExtension(assetPath));
   const image = assetTree.files.has(`${base}.png`);
   const atlas = assetTree.files.has(`${base}.atlas.json`);
-  const parts = assetTree.files.has(`${base}.parts.json`);
-  const timeline = assetTree.files.has(`${base}.timeline.json`);
+  const directParts = assetTree.files.has(`${base}.parts.json`);
+  const directTimeline = assetTree.files.has(`${base}.timeline.json`);
+  const pixelart = getCharacterPixelartInfo(base);
+  const frame = Boolean(pixelart && assetTree.files.has(pixelart.frame));
+  const timeline = directTimeline || Boolean(pixelart && assetTree.files.has(pixelart.timeline));
+  const parts = directParts;
 
   return {
     image,
     atlas,
     parts,
+    frame,
     timeline,
-    fullMetadata: image && atlas && parts && timeline,
+    metadataKind: image && atlas && directParts && directTimeline ? 'parts' : image && atlas && frame && timeline ? 'frame' : undefined,
+    fullMetadata: image && atlas && ((directParts && directTimeline) || (frame && timeline)),
   };
 }
 
@@ -265,12 +343,14 @@ function getTags(assetPath: string, sourceFile: string): string[] {
   if (lower.includes('battle/funnel') || lower.includes('/funnel/')) tags.add('funnel');
   if (lower.includes('field_object')) tags.add('field_object');
   if (lower.includes('character/')) tags.add('character');
+  if (lower.includes('/pixelart/')) tags.add('pixelart');
+  if (lower.includes('special_sprite_sheet')) tags.add('special');
   if (lower.includes('animation_background')) tags.add('background');
   return Array.from(tags);
 }
 
 function buildImageSources(assetPath: string): string[] {
-  if (/^https?:\/\//i.test(assetPath)) {
+  if (/^https?:\/\//i.test(assetPath) && !assetPath.trim().startsWith(CDN_ROOT)) {
     const noQuery = assetPath.split(/[?#]/)[0];
     if (IMAGE_EXT_RE.test(noQuery)) return [noQuery];
     const base = noQuery.replace(/\.[a-z0-9]{2,5}$/i, '');
@@ -284,6 +364,8 @@ function buildImageSources(assetPath: string): string[] {
     : [`${withoutExt}.png`, `${withoutExt}.jpg`, `${withoutExt}.webp`];
 
   const sources = new Set<string>();
+  const localSource = getLocalCharacterPixelartSource(normalized);
+  if (localSource) sources.add(localSource);
   for (const candidate of directPaths) {
     sources.add(`${CDN_ROOT}/${candidate}`);
     if (!candidate.startsWith('wfjukebox/')) {
@@ -301,6 +383,20 @@ function humanizePath(assetPath: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/\b\w/g, (match) => match.toUpperCase()) || assetPath;
+}
+
+function humanizeCharacterId(value: string): string {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (match) => match.toUpperCase()) || value;
+}
+
+function getPixelartLabel(assetPath: string): string {
+  const info = getCharacterPixelartInfo(assetPath);
+  if (!info) return humanizePath(assetPath);
+  return `${humanizeCharacterId(info.characterId)} ${info.sheetName === 'special_sprite_sheet' ? 'Special' : 'Pixelart'}`;
 }
 
 function isReadableLabel(value: string): boolean {
@@ -467,6 +563,27 @@ function scanValue(
   }
 }
 
+function addAssetTreePixelartCandidates(candidates: Map<string, MutableCandidate>, assetTree: AssetTreeIndex) {
+  for (const filePath of assetTree.files) {
+    if (!filePath.endsWith('.png')) continue;
+    const assetPath = stripImageExtension(filePath);
+    const info = getCharacterPixelartInfo(assetPath);
+    if (!info) continue;
+
+    addCandidate(candidates, assetPath, {
+      lang: 'en',
+      category: 'character',
+      file: 'asset-tree/character-pixelart',
+      sourceKey: info.sheetName,
+      context: {
+        label: getPixelartLabel(assetPath),
+        path: assetPath,
+      },
+      assetTree,
+    });
+  }
+}
+
 async function listJsonFiles(root: string): Promise<string[]> {
   const entries = await fs.readdir(root, { withFileTypes: true });
   const files = await Promise.all(
@@ -486,15 +603,14 @@ async function buildPayload(): Promise<CachedPayload> {
     return cachedPayload;
   }
 
+  const prebuilt = await getPrebuiltPayload();
+  if (prebuilt?.assets.length) {
+    cachedPayload = { at: now, version: CACHE_VERSION, ...prebuilt };
+    return cachedPayload;
+  }
+
   const candidates = new Map<string, MutableCandidate>();
   const assetTree = await getAssetTreeIndex();
-  if (!assetTree) {
-    const prebuilt = await getPrebuiltPayload();
-    if (prebuilt) {
-      cachedPayload = { at: now, version: CACHE_VERSION, ...prebuilt };
-      return cachedPayload;
-    }
-  }
 
   let scannedFiles = 0;
 
@@ -528,6 +644,8 @@ async function buildPayload(): Promise<CachedPayload> {
       });
     }
   }
+
+  if (assetTree) addAssetTreePixelartCandidates(candidates, assetTree);
 
   const assets = Array.from(candidates.values())
     .map((candidate) => ({

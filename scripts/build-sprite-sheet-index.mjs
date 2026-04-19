@@ -8,7 +8,10 @@ const CDN_ROOT = 'https://wfjukebox.b-cdn.net';
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|bmp)$/i;
 const BAD_EXT_RE = /\.(mp3|ogg|wav|m4a|aac|flac|awb|acb|json|orderedmap|txt|csv)$/i;
 const PATH_TOKEN_RE = /https?:\/\/[^\s"'`]+|\/?[A-Za-z0-9._$-]+(?:\/[A-Za-z0-9._$-]+)+/g;
-const INDEX_VERSION = 2;
+const INDEX_VERSION = 5;
+const PREVIEW_FRAME_MS = 33;
+const FRAME_MASK = 0x3fffffff;
+const PREVIEW_SEQUENCE_NAMES = ['neutral', 'idle', 'wait', 'stand', 'move', 'move_out', 'start'];
 
 function getArg(name) {
   const index = process.argv.indexOf(name);
@@ -16,12 +19,16 @@ function getArg(name) {
 }
 
 function normalizeAssetPath(raw) {
-  const cleaned = String(raw).trim().split(/[?#]/)[0].replace(/[),.;]+$/, '');
+  let cleaned = String(raw).trim().replace(/\\/g, '/').split(/[?#]/)[0].replace(/[),.;]+$/, '');
   if (!cleaned || cleaned === '(None)') return '';
   if (cleaned.startsWith(CDN_ROOT)) {
-    return cleaned.slice(CDN_ROOT.length).replace(/^\/+/, '');
+    cleaned = cleaned.slice(CDN_ROOT.length);
   }
-  return cleaned.replace(/^\/+/, '');
+  const assetsIndex = cleaned.toLowerCase().lastIndexOf('/assets/');
+  if (assetsIndex >= 0) {
+    cleaned = cleaned.slice(assetsIndex + '/assets/'.length);
+  }
+  return cleaned.replace(/^\/+/, '').replace(/^assets\//i, '');
 }
 
 function normalizeTreePath(raw) {
@@ -30,6 +37,26 @@ function normalizeTreePath(raw) {
 
 function stripImageExtension(assetPath) {
   return normalizeAssetPath(assetPath).replace(IMAGE_EXT_RE, '');
+}
+
+function getCharacterPixelartInfo(assetPath) {
+  const normalized = stripImageExtension(assetPath).toLowerCase();
+  const match = normalized.match(/^character\/([^/]+)\/pixelart\/(sprite_sheet|special_sprite_sheet)$/);
+  if (!match) return null;
+
+  const directory = normalized.split('/').slice(0, -1).join('/');
+  const sheetName = match[2];
+  const prefix = sheetName === 'special_sprite_sheet' ? 'special' : 'pixelart';
+
+  return {
+    characterId: match[1],
+    sheetName,
+    prefix,
+    directory,
+    atlas: `${normalized}.atlas.json`,
+    frame: `${directory}/${prefix}.frame.json`,
+    timeline: `${directory}/${prefix}.timeline.json`,
+  };
 }
 
 async function fileExists(filePath) {
@@ -84,15 +111,21 @@ function getAssetAvailability(assetPath, assetTree) {
   const base = normalizeTreePath(stripImageExtension(assetPath));
   const image = assetTree.files.has(`${base}.png`);
   const atlas = assetTree.files.has(`${base}.atlas.json`);
-  const parts = assetTree.files.has(`${base}.parts.json`);
-  const timeline = assetTree.files.has(`${base}.timeline.json`);
+  const directParts = assetTree.files.has(`${base}.parts.json`);
+  const directTimeline = assetTree.files.has(`${base}.timeline.json`);
+  const pixelart = getCharacterPixelartInfo(base);
+  const frame = Boolean(pixelart && assetTree.files.has(pixelart.frame));
+  const timeline = directTimeline || Boolean(pixelart && assetTree.files.has(pixelart.timeline));
+  const parts = directParts;
 
   return {
     image,
     atlas,
     parts,
+    frame,
     timeline,
-    fullMetadata: image && atlas && parts && timeline,
+    metadataKind: image && atlas && directParts && directTimeline ? 'parts' : image && atlas && frame && timeline ? 'frame' : undefined,
+    fullMetadata: image && atlas && ((directParts && directTimeline) || (frame && timeline)),
   };
 }
 
@@ -129,12 +162,14 @@ function getTags(assetPath, sourceFile) {
   if (lower.includes('battle/funnel') || lower.includes('/funnel/')) tags.add('funnel');
   if (lower.includes('field_object')) tags.add('field_object');
   if (lower.includes('character/')) tags.add('character');
+  if (lower.includes('/pixelart/')) tags.add('pixelart');
+  if (lower.includes('special_sprite_sheet')) tags.add('special');
   if (lower.includes('animation_background')) tags.add('background');
   return Array.from(tags);
 }
 
 function buildImageSources(assetPath) {
-  if (/^https?:\/\//i.test(assetPath)) {
+  if (/^https?:\/\//i.test(assetPath) && !assetPath.trim().startsWith(CDN_ROOT)) {
     const noQuery = assetPath.split(/[?#]/)[0];
     if (IMAGE_EXT_RE.test(noQuery)) return [noQuery];
     const base = noQuery.replace(/\.[a-z0-9]{2,5}$/i, '');
@@ -148,6 +183,9 @@ function buildImageSources(assetPath) {
     : [`${withoutExt}.png`, `${withoutExt}.jpg`, `${withoutExt}.webp`];
 
   const sources = new Set();
+  if (getCharacterPixelartInfo(normalized)) {
+    sources.add(`/assets/${IMAGE_EXT_RE.test(normalized) ? normalized : `${withoutExt}.png`}`);
+  }
   for (const candidate of directPaths) {
     sources.add(`${CDN_ROOT}/${candidate}`);
     if (!candidate.startsWith('wfjukebox/')) {
@@ -155,6 +193,300 @@ function buildImageSources(assetPath) {
     }
   }
   return Array.from(sources);
+}
+
+function toNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getSegmentKind(value) {
+  return value >>> 30;
+}
+
+function getSegmentStart(value) {
+  return value & FRAME_MASK;
+}
+
+function getDuration(value) {
+  if (value === undefined || value === null) return 1;
+  return Math.max(1, value & 0xffff);
+}
+
+function getFutureFrame(loopKind, frame, offset, totalFrames) {
+  if (loopKind === 0) return frame;
+  if (loopKind === 1) return Math.ceil(Math.min(frame + offset, Math.max(0, totalFrames - 1)));
+  if (loopKind === 2 && totalFrames > 0) return (frame + offset) % totalFrames;
+  return 0;
+}
+
+function addFrame(graphic, frameIndex, state) {
+  if (frameIndex < 0 || frameIndex >= graphic.frames.length) return;
+  graphic.frames[frameIndex] = {
+    ...state,
+    next: graphic.frames[frameIndex],
+  };
+}
+
+function addImageSegment(graphic, segment) {
+  const startFrame = getSegmentStart(segment.s);
+  let elapsed = 0;
+  for (const record of segment.l || []) {
+    const duration = getDuration(record.t);
+    for (let offset = 0; offset < duration; offset += 1) {
+      addFrame(graphic, startFrame + elapsed + offset, {
+        id: segment.i,
+        referencingFrame: 0,
+        indexForPath: 0,
+      });
+    }
+    elapsed += duration;
+  }
+}
+
+function addGraphicSegment(graphic, segment, descriptors, indexForPath) {
+  const childId = segment.i;
+  const childTotalFrames = Math.max(1, toNumber(descriptors[childId]?.t, 1));
+  const startFrame = getSegmentStart(segment.s);
+  let elapsed = 0;
+
+  for (const record of segment.l || []) {
+    const duration = getDuration(record.t);
+    const reference = record.r ?? 0;
+    const loopKind = reference >>> 30;
+    const referenceFrame = reference & FRAME_MASK;
+
+    for (let offset = 0; offset < duration; offset += 1) {
+      addFrame(graphic, startFrame + elapsed + offset, {
+        id: childId,
+        referencingFrame: getFutureFrame(loopKind, referenceFrame, offset, childTotalFrames),
+        indexForPath,
+      });
+    }
+
+    elapsed += duration;
+  }
+}
+
+function buildGraphics(parts) {
+  const descriptors = parts.g || [];
+  return descriptors.map((descriptor) => {
+    const totalFrame = Math.max(1, toNumber(descriptor.t, 1));
+    const graphic = {
+      totalFrame,
+      frames: new Array(totalFrame),
+    };
+    const segments = descriptor.s || [];
+
+    for (let index = 1; index <= segments.length; index += 1) {
+      const segment = segments[segments.length - index];
+      const kind = getSegmentKind(segment.s);
+
+      if (kind === 0) {
+        addImageSegment(graphic, segment);
+      } else if (kind === 2) {
+        addGraphicSegment(graphic, segment, descriptors, index);
+      }
+    }
+
+    return graphic;
+  });
+}
+
+function resolveFinalFrame(graphics, graphicIndex, frameIndex, depth = 0) {
+  if (depth > 24) return null;
+
+  let state = graphics[graphicIndex]?.frames[frameIndex];
+  while (state) {
+    if (state.indexForPath === 0) return state;
+
+    const resolved = resolveFinalFrame(graphics, state.id, state.referencingFrame, depth + 1);
+    if (resolved) return resolved;
+
+    state = state.next;
+  }
+
+  return null;
+}
+
+function buildMetadataFrames(metadata, sequence, frameMs) {
+  const begin = Math.max(1, Math.floor(toNumber(sequence.begin, 1)));
+  const end = Math.max(begin, Math.floor(toNumber(sequence.end, begin)));
+  const delay = Math.max(1, Math.round(frameMs));
+  const atlasByName = new Map(metadata.atlas.map((entry) => [entry.n, entry]));
+  const imageAtlas = (metadata.parts.i || []).map((image) => (image.p ? atlasByName.get(image.p) : undefined));
+  const graphics = buildGraphics(metadata.parts);
+  const frames = [];
+
+  for (let sourceFrame = begin; sourceFrame <= end; sourceFrame += 1) {
+    const finalState = resolveFinalFrame(graphics, 0, sourceFrame - 1);
+    if (!finalState) continue;
+
+    const atlas = imageAtlas[finalState.id];
+    if (!atlas) continue;
+
+    const last = frames.at(-1);
+    if (last?.imageIndex === finalState.id) {
+      last.delayMs += delay;
+    } else {
+      frames.push({
+        atlas,
+        imageIndex: finalState.id,
+        sourceFrame,
+        delayMs: delay,
+      });
+    }
+  }
+
+  return frames;
+}
+
+function isUsableMetadata(metadata) {
+  return (
+    metadata &&
+    typeof metadata === 'object' &&
+    Array.isArray(metadata.atlas) &&
+    Array.isArray(metadata.timeline?.sequences) &&
+    metadata.parts &&
+    Array.isArray(metadata.parts.i) &&
+    Array.isArray(metadata.parts.g)
+  );
+}
+
+function choosePreviewFrame(metadata) {
+  const sequences = metadata.timeline.sequences || [];
+  const candidates = sequences
+    .map((sequence) => ({
+      sequence,
+      frames: buildMetadataFrames(metadata, sequence, PREVIEW_FRAME_MS),
+    }))
+    .filter(({ frames }) => frames.length > 0);
+
+  if (candidates.length === 0) return null;
+
+  for (const preferredName of PREVIEW_SEQUENCE_NAMES) {
+    const match = candidates.find(({ frames, sequence }) => (
+      frames.length > 1 && sequence.name.toLowerCase() === preferredName
+    ));
+    if (match) return { sequence: match.sequence, frame: match.frames[0] };
+  }
+
+  const loop = candidates.find(({ frames, sequence }) => frames.length > 1 && sequence.kind === 'loop');
+  if (loop) return { sequence: loop.sequence, frame: loop.frames[0] };
+
+  const animated = candidates.find(({ frames }) => frames.length > 1);
+  if (animated) return { sequence: animated.sequence, frame: animated.frames[0] };
+
+  const fallback = candidates[0];
+  return { sequence: fallback.sequence, frame: fallback.frames[0] };
+}
+
+function compactPreviewValue(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
+}
+
+function getTimelineEnd(timeline) {
+  const sequences = Array.isArray(timeline?.sequences) ? timeline.sequences : [];
+  return Math.max(
+    1,
+    ...sequences.map((sequence) => Math.floor(toNumber(sequence.end, sequence.begin || 1)))
+  );
+}
+
+function getAtlasFrameStart(entry, prefix) {
+  const name = typeof entry?.n === 'string' ? entry.n : '';
+  const match = name.match(new RegExp(`${prefix}(\\d+)$`, 'i'));
+  if (!match) return null;
+  return Math.max(0, Number.parseInt(match[1], 10) - 2);
+}
+
+function buildFramePartsFromAtlas(atlas, timeline, prefix) {
+  if (!Array.isArray(atlas)) return null;
+
+  const ordered = atlas
+    .map((entry, index) => ({
+      index,
+      start: getAtlasFrameStart(entry, prefix),
+    }))
+    .filter((entry) => entry.start !== null)
+    .sort((a, b) => a.start - b.start || a.index - b.index);
+
+  if (!ordered.length) return null;
+
+  ordered[0].start = 0;
+  const totalFrames = Math.max(getTimelineEnd(timeline), ordered.at(-1).start + 1);
+  const segments = ordered
+    .filter((entry) => entry.start < totalFrames)
+    .map((entry, index) => {
+      const nextStart = ordered[index + 1]?.start ?? totalFrames;
+      return {
+        s: entry.start,
+        i: entry.index,
+        l: [{ t: Math.max(1, nextStart - entry.start) }],
+      };
+    });
+
+  return {
+    i: atlas.map((entry) => ({ p: entry.n })),
+    g: [{ t: totalFrames, s: segments }],
+  };
+}
+
+async function readJsonIfExists(filePath) {
+  if (!(await fileExists(filePath))) return null;
+  try {
+    return JSON.parse(await fs.readFile(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+async function readMetadataForAsset(asset, assetsRoot) {
+  const basePath = path.join(assetsRoot, ...asset.path.split('/'));
+  const pixelart = getCharacterPixelartInfo(asset.path);
+
+  if (pixelart) {
+    const pixelartDirectory = path.join(assetsRoot, ...pixelart.directory.split('/'));
+    const [atlas, timeline] = await Promise.all([
+      readJsonIfExists(`${basePath}.atlas.json`),
+      readJsonIfExists(path.join(pixelartDirectory, `${pixelart.prefix}.timeline.json`)),
+    ]);
+    const parts = buildFramePartsFromAtlas(atlas, timeline, pixelart.prefix);
+    return { atlas, timeline, parts };
+  }
+
+  const [atlas, timeline, parts] = await Promise.all([
+    readJsonIfExists(`${basePath}.atlas.json`),
+    readJsonIfExists(`${basePath}.timeline.json`),
+    readJsonIfExists(`${basePath}.parts.json`),
+  ]);
+
+  return { atlas, timeline, parts };
+}
+
+async function buildPreview(asset, assetsRoot) {
+  if (!asset.availability?.fullMetadata || !assetsRoot) return undefined;
+
+  const metadata = await readMetadataForAsset(asset, assetsRoot);
+  if (!isUsableMetadata(metadata)) return undefined;
+
+  const chosen = choosePreviewFrame(metadata);
+  if (!chosen) return undefined;
+
+  const entry = chosen.frame.atlas;
+  return compactPreviewValue({
+    source: asset.sources[0] || `${CDN_ROOT}/${asset.path}.png`,
+    sequence: chosen.sequence.name,
+    x: entry.x,
+    y: entry.y,
+    w: entry.w,
+    h: entry.h,
+    r: entry.r,
+    fx: entry.fx,
+    fy: entry.fy,
+    fw: entry.fw,
+    fh: entry.fh,
+  });
 }
 
 function humanizePath(assetPath) {
@@ -167,6 +499,22 @@ function humanizePath(assetPath) {
       .trim()
       .replace(/\b\w/g, (match) => match.toUpperCase()) || assetPath
   );
+}
+
+function humanizeCharacterId(value) {
+  return (
+    value
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, (match) => match.toUpperCase()) || value
+  );
+}
+
+function getPixelartLabel(assetPath) {
+  const info = getCharacterPixelartInfo(assetPath);
+  if (!info) return humanizePath(assetPath);
+  return `${humanizeCharacterId(info.characterId)} ${info.sheetName === 'special_sprite_sheet' ? 'Special' : 'Pixelart'}`;
 }
 
 function isReadableLabel(value) {
@@ -324,6 +672,27 @@ function scanValue(value, candidates, params, depth = 0) {
   }
 }
 
+function addAssetTreePixelartCandidates(candidates, assetTree) {
+  for (const filePath of assetTree.files) {
+    if (!filePath.endsWith('.png')) continue;
+    const assetPath = stripImageExtension(filePath);
+    const info = getCharacterPixelartInfo(assetPath);
+    if (!info) continue;
+
+    addCandidate(candidates, assetPath, {
+      lang: 'en',
+      category: 'character',
+      file: 'asset-tree/character-pixelart',
+      sourceKey: info.sheetName,
+      context: {
+        label: getPixelartLabel(assetPath),
+        path: assetPath,
+      },
+      assetTree,
+    });
+  }
+}
+
 async function listJsonFiles(root) {
   const entries = await fs.readdir(root, { withFileTypes: true });
   const files = await Promise.all(
@@ -337,7 +706,7 @@ async function listJsonFiles(root) {
   return files.flat();
 }
 
-async function buildIndex({ dataRoot, assetTreePath, outputPath }) {
+async function buildIndex({ dataRoot, assetTreePath, assetsRoot, outputPath }) {
   const candidates = new Map();
   const assetTree = await getAssetTreeIndex(assetTreePath);
   let scannedFiles = 0;
@@ -368,6 +737,8 @@ async function buildIndex({ dataRoot, assetTreePath, outputPath }) {
     }
   }
 
+  addAssetTreePixelartCandidates(candidates, assetTree);
+
   const assets = Array.from(candidates.values())
     .map((candidate) => {
       const asset = { ...candidate };
@@ -381,13 +752,21 @@ async function buildIndex({ dataRoot, assetTreePath, outputPath }) {
       return a.path.localeCompare(b.path);
     });
 
+  const assetsWithPreviews = await Promise.all(
+    assets.map(async (asset) => {
+      const preview = await buildPreview(asset, assetsRoot);
+      return preview ? { ...asset, preview } : asset;
+    })
+  );
+
   const payload = {
     version: INDEX_VERSION,
     generatedAt: new Date().toISOString(),
     scannedFiles,
-    assetCount: assets.length,
+    assetCount: assetsWithPreviews.length,
     assetTreePath,
-    assets,
+    assetsRoot,
+    assets: assetsWithPreviews,
   };
 
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
@@ -402,12 +781,18 @@ const assetTreePath = path.resolve(
     process.env.WF_ASSET_TREE_PATH ||
     path.resolve(cwd, '..', 'WFDatamine', 'output', 'asset-tree.txt')
 );
+const assetsRoot = path.resolve(
+  getArg('--assets-root') ||
+    process.env.WF_ASSETS_ROOT ||
+    path.join(path.dirname(assetTreePath), 'assets')
+);
 const outputPath = path.resolve(getArg('--output') || path.join(dataRoot, 'sprite-sheets-index.json'));
 
 try {
-  const payload = await buildIndex({ dataRoot, assetTreePath, outputPath });
+  const payload = await buildIndex({ dataRoot, assetTreePath, assetsRoot, outputPath });
   console.log(`Wrote ${payload.assetCount} sprite sheet candidates to ${outputPath}`);
   console.log(`Scanned ${payload.scannedFiles} datalist files using ${assetTreePath}`);
+  console.log(`Resolved preview frames from ${assetsRoot}`);
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;

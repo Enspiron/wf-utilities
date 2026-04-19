@@ -21,6 +21,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  buildImageUrlFromPath,
+  collectBgmCandidatesFromRaw,
+  collectImageCandidatesFromRaw,
+} from '@/lib/asset-url';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 
@@ -96,9 +101,6 @@ const SELECTED_DAY_PAGE_SIZE = 80;
 const LIST_PAGE_SIZE = 120;
 const DATE_RE = /\b\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}:\d{2})?\b/;
 const MIN_VALID_DATE = new Date('2003-01-01T00:00:00Z');
-const CDN_ROOT = 'https://wfjukebox.b-cdn.net';
-const DIRECTORY_LIKE_RE = /https?:\/\/[^\s"'`]+|\/?[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+/g;
-const BGM_PATH_RE = /\/?bgm\/[A-Za-z0-9._/-]+/gi;
 
 function parseDate(value: unknown): Date | null {
   if (typeof value !== 'string') return null;
@@ -110,40 +112,6 @@ function parseDateToken(value: string): Date | null {
   const match = value.match(DATE_RE);
   if (!match) return null;
   return parseDate(match[0]);
-}
-
-function hasImageExtension(value: string): boolean {
-  return /\.(png|jpe?g|webp|svg|gif)$/i.test(value);
-}
-
-function buildImageUrlFromPath(pathValue: string): string {
-  if (pathValue.startsWith('http://') || pathValue.startsWith('https://')) return pathValue;
-  const normalized = pathValue.replace(/^\/+/, '');
-  return `${CDN_ROOT}/${hasImageExtension(normalized) ? normalized : `${normalized}.png`}`;
-}
-
-function extractDirectoryLikeTokens(input: string): string[] {
-  const matches = input.match(DIRECTORY_LIKE_RE) || [];
-  return matches
-    .map((token) => token.replace(/[),.;]+$/, '').trim())
-    .filter((token) => token.includes('/'));
-}
-
-function collectImageCandidatesFromRaw(value: unknown, out: Set<string>) {
-  if (typeof value === 'string') {
-    const tokens = extractDirectoryLikeTokens(value);
-    for (const token of tokens) out.add(buildImageUrlFromPath(token));
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) collectImageCandidatesFromRaw(item, out);
-    return;
-  }
-  if (value && typeof value === 'object') {
-    for (const item of Object.values(value as Record<string, unknown>)) {
-      collectImageCandidatesFromRaw(item, out);
-    }
-  }
 }
 
 function getGachaBannerImageUrl(event: CalendarEvent): string | null {
@@ -172,38 +140,6 @@ function getEventPreviewImageCandidates(event: CalendarEvent): string[] {
     ordered.add(url);
   }
   return [...ordered].slice(0, 8);
-}
-
-function hasAudioExtension(value: string): boolean {
-  return /\.(mp3|ogg|wav|m4a)$/i.test(value);
-}
-
-function buildBgmUrlFromPath(pathValue: string): string {
-  if (pathValue.startsWith('http://') || pathValue.startsWith('https://')) return pathValue;
-  const normalized = pathValue.replace(/^\/+/, '');
-  return `${CDN_ROOT}/${hasAudioExtension(normalized) ? normalized : `${normalized}.mp3`}`;
-}
-
-function extractBgmTokens(input: string): string[] {
-  const matches = input.match(BGM_PATH_RE) || [];
-  return matches.map((token) => token.replace(/[),.;]+$/, '').trim());
-}
-
-function collectBgmCandidatesFromRaw(value: unknown, out: Set<string>) {
-  if (typeof value === 'string') {
-    const tokens = extractBgmTokens(value);
-    for (const token of tokens) out.add(buildBgmUrlFromPath(token));
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) collectBgmCandidatesFromRaw(item, out);
-    return;
-  }
-  if (value && typeof value === 'object') {
-    for (const item of Object.values(value as Record<string, unknown>)) {
-      collectBgmCandidatesFromRaw(item, out);
-    }
-  }
 }
 
 function isSaneDateRange(startAt: Date, endAt: Date): boolean {
