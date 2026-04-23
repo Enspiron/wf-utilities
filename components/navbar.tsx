@@ -9,6 +9,7 @@ import {
   Calendar,
   Clipboard,
   ChevronDown,
+  Clapperboard,
   Database,
   ExternalLink,
   FileJson,
@@ -145,8 +146,10 @@ const NAV_GROUPS: NavGroup[] = [
     icon: User,
     items: [
       { href: '/facebuilder', label: 'Face Builder', icon: User },
+      { href: '/scenes', label: 'Scenes', icon: Clapperboard },
       { href: '/sprite-sheets', label: 'Sprite Sheets', icon: Film },
       { href: '/music', label: 'Music', icon: Music2 },
+      { href: '/voicedb', label: 'VoiceDB', icon: User },
       { href: '/comics', label: 'Comics', icon: BookOpenText },
     ],
   },
@@ -179,8 +182,10 @@ const QUICK_JUMP_KEYWORDS: Record<string, string[]> = {
   '/exboost': ['ex boost', 'boost'],
   '/share': ['share', 'embed', 'meta'],
   '/facebuilder': ['face', 'builder', 'portrait'],
+  '/scenes': ['scene', 'scenes', 'story', 'scenario', 'battle field', 'reconstruct', 'movie'],
   '/sprite-sheets': ['sprite sheets', 'spritesheet', 'animation', 'animated', 'battle', 'boss', 'funnel', 'cutin'],
   '/music': ['music', 'bgm', 'audio'],
+  '/voicedb': ['voice', 'voice actors', 'seiyuu', 'seiyu', 'cast', 'roles', 'gacha'],
   '/comics': ['comics', 'episodes'],
 };
 

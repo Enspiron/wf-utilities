@@ -24,6 +24,7 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -198,6 +199,13 @@ type Notice =
   | { type: 'error'; message: string }
   | { type: 'info'; message: string }
   | null;
+
+function showCopiedToast(label: string, value: string) {
+  toast.info(`Copied ${label}`, {
+    description: value,
+    duration: 1800,
+  });
+}
 
 type GeneralField = {
   key: string;
@@ -3897,8 +3905,9 @@ function SaveEditorPageClient() {
     if (!value) return;
     try {
       await navigator.clipboard.writeText(value);
-      setNotice({ type: 'success', message: `Copied ${label}: ${value}.` });
+      showCopiedToast(label, value);
     } catch {
+      toast.error(`Could not copy ${label}`);
       setNotice({ type: 'error', message: `Could not copy ${label} to clipboard.` });
     } finally {
       closeCharacterContextMenu();
@@ -4291,8 +4300,9 @@ function SaveEditorPageClient() {
   const copyItemIdToClipboard = async (itemId: string) => {
     try {
       await navigator.clipboard.writeText(itemId);
-      setNotice({ type: 'success', message: `Copied item ID ${itemId}.` });
+      showCopiedToast('item ID', itemId);
     } catch {
+      toast.error('Could not copy item ID');
       setNotice({ type: 'error', message: 'Could not copy item ID to clipboard.' });
     } finally {
       closeItemContextMenu();
@@ -4517,8 +4527,9 @@ function SaveEditorPageClient() {
   const copyEquipmentIdToClipboard = async (equipmentId: string) => {
     try {
       await navigator.clipboard.writeText(equipmentId);
-      setNotice({ type: 'success', message: `Copied equipment ID ${equipmentId}.` });
+      showCopiedToast('equipment ID', equipmentId);
     } catch {
+      toast.error('Could not copy equipment ID');
       setNotice({ type: 'error', message: 'Could not copy equipment ID to clipboard.' });
     } finally {
       closeEquipmentContextMenu();

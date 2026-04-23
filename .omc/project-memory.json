@@ -1,0 +1,249 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1776640601216,
+  "projectRoot": "E:\\Games\\Installed\\World Flipper\\wf-facemaker",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "next",
+        "version": "16.1.6",
+        "category": "fullstack"
+      },
+      {
+        "name": "react",
+        "version": "19.2.3",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "19.2.3",
+        "category": "frontend"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "npm run build",
+    "testCommand": null,
+    "lintCommand": "npm run lint",
+    "devCommand": "npm run dev",
+    "scripts": {
+      "dev": "next dev",
+      "build:sprite-index": "node scripts/build-sprite-sheet-index.mjs",
+      "build": "next build",
+      "start": "next start",
+      "lint": "eslint"
+    }
+  },
+  "conventions": {
+    "namingStyle": "camelCase",
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "app",
+      "components",
+      "lib",
+      "public",
+      "scripts"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "app": {
+      "path": "app",
+      "purpose": "Application code",
+      "fileCount": 4,
+      "lastAccessed": 1776640601200,
+      "keyFiles": [
+        "favicon.ico",
+        "globals.css",
+        "layout.tsx",
+        "page.tsx"
+      ]
+    },
+    "components": {
+      "path": "components",
+      "purpose": "UI components",
+      "fileCount": 10,
+      "lastAccessed": 1776640601200,
+      "keyFiles": [
+        "AudioPlayer.tsx",
+        "go-back-button.tsx",
+        "home-command-center.tsx",
+        "item-detail-page.tsx",
+        "item-save-link-editor.tsx"
+      ]
+    },
+    "copy": {
+      "path": "copy",
+      "purpose": null,
+      "fileCount": 11,
+      "lastAccessed": 1776640601205,
+      "keyFiles": [
+        "badge.tsx",
+        "button.tsx",
+        "card.tsx",
+        "dialog.tsx",
+        "dropdown-menu.tsx"
+      ]
+    },
+    "data": {
+      "path": "data",
+      "purpose": "Data files",
+      "fileCount": 0,
+      "lastAccessed": 1776640601205,
+      "keyFiles": []
+    },
+    "lib": {
+      "path": "lib",
+      "purpose": "Library code",
+      "fileCount": 7,
+      "lastAccessed": 1776640601205,
+      "keyFiles": [
+        "asset-url.ts",
+        "character-parser.ts",
+        "data-source.ts",
+        "item-catalog.ts",
+        "json-parser.ts"
+      ]
+    },
+    "public": {
+      "path": "public",
+      "purpose": "Public files",
+      "fileCount": 5,
+      "lastAccessed": 1776640601206,
+      "keyFiles": [
+        "file.svg",
+        "globe.svg",
+        "next.svg",
+        "vercel.svg",
+        "window.svg"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 3,
+      "lastAccessed": 1776640601206,
+      "keyFiles": [
+        "build-scene-index.mjs",
+        "build-sprite-sheet-index.mjs",
+        "export-asset-tree.ps1"
+      ]
+    },
+    "supabase": {
+      "path": "supabase",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1776640601206,
+      "keyFiles": []
+    },
+    "tmp": {
+      "path": "tmp",
+      "purpose": null,
+      "fileCount": 8,
+      "lastAccessed": 1776640601206,
+      "keyFiles": [
+        "characters.jsonnet",
+        "Characters.ref.tsx",
+        "comics_en.json",
+        "feature_banner_remote.json",
+        "ftp_comics_en_list.txt"
+      ]
+    },
+    "types": {
+      "path": "types",
+      "purpose": "Type definitions",
+      "fileCount": 1,
+      "lastAccessed": 1776640601207,
+      "keyFiles": [
+        "gifenc.d.ts"
+      ]
+    },
+    "app\\api": {
+      "path": "app\\api",
+      "purpose": "API routes",
+      "fileCount": 0,
+      "lastAccessed": 1776640601207,
+      "keyFiles": []
+    },
+    "copy\\app": {
+      "path": "copy\\app",
+      "purpose": "Application code",
+      "fileCount": 0,
+      "lastAccessed": 1776640601208,
+      "keyFiles": []
+    },
+    "public\\assets": {
+      "path": "public\\assets",
+      "purpose": "Static assets",
+      "fileCount": 0,
+      "lastAccessed": 1776640601208,
+      "keyFiles": []
+    },
+    "public\\data": {
+      "path": "public\\data",
+      "purpose": "Data files",
+      "fileCount": 14,
+      "lastAccessed": 1776640601208,
+      "keyFiles": [
+        "character.json",
+        "characters_all.json",
+        "characters_all_withjp.json"
+      ]
+    },
+    "supabase\\migrations": {
+      "path": "supabase\\migrations",
+      "purpose": "Database migrations",
+      "fileCount": 2,
+      "lastAccessed": 1776640601208,
+      "keyFiles": [
+        "20260304_auth_community_save_sharing.sql",
+        "20260304_profiles_admin_role_policy.sql"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "app\\scenes\\scene-reconstructor-client.tsx",
+      "accessCount": 17,
+      "lastAccessed": 1776647014297,
+      "type": "file"
+    },
+    {
+      "path": "app\\api\\scenes\\route.ts",
+      "accessCount": 3,
+      "lastAccessed": 1776646789317,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

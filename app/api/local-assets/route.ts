@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { normalizeAssetPath } from '@/lib/asset-url';
 
-// Dev-only: this route serves files from a hardcoded local datamining
-// directory that only exists on the maintainer's workstation. It must never
-// be reachable in production — the path is Windows-specific and would 500
-// noisily on Vercel — so we hard-fail unless explicitly opted in via env.
+// Dev/local route for datamined assets. Production must explicitly opt in so
+// deployed hosts do not expose filesystem paths by accident.
 const LOCAL_ASSETS_ENABLED =
   process.env.NODE_ENV !== 'production' || process.env.LOCAL_ASSETS_ENABLED === '1';
-const LOCAL_ASSETS_DIR = process.env.LOCAL_ASSETS_DIR ?? 'E:\\WFDatamine\\output\\assets';
+
+function getLocalAssetsDir(): string {
+  return path.resolve(
+    process.env.LOCAL_ASSETS_DIR ??
+      process.env.WF_ASSET_ROOT ??
+      path.join(process.cwd(), '..', 'WFDatamine', 'output', 'assets')
+  );
+}
 
 export async function GET(request: NextRequest) {
   if (!LOCAL_ASSETS_ENABLED) {
@@ -26,12 +32,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Construct the full local path
-    const localDir = LOCAL_ASSETS_DIR;
-    const fullPath = path.join(localDir, assetPath);
+    const localDir = getLocalAssetsDir();
+    const relativePath = normalizeAssetPath(assetPath);
+    const fullPath = path.resolve(localDir, ...relativePath.split('/'));
 
-    // Security check - ensure the path is within the allowed directory
-    if (!fullPath.startsWith(localDir)) {
+    if (fullPath !== localDir && !fullPath.startsWith(`${localDir}${path.sep}`)) {
       return NextResponse.json(
         { error: 'Invalid path' },
         { status: 403 }

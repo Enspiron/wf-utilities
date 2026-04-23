@@ -1,0 +1,7 @@
+{
+  "tool_name": "Read",
+  "tool_input_preview": "{\"file_path\":\"E:\\\\Games\\\\Installed\\\\World Flipper\\\\wf-facemaker\\\\app\\\\api\\\\scenes\"}",
+  "error": "EISDIR: illegal operation on a directory, read 'E:\\Games\\Installed\\World Flipper\\wf-facemaker\\app\\api\\scenes'",
+  "timestamp": "2026-04-20T00:52:24.606Z",
+  "retry_count": 1
+}
