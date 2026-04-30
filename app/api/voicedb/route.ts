@@ -72,13 +72,25 @@ function parseEnName(enName: string): { title: string; name: string } {
   };
 }
 
+function hashText(value: string): string {
+  let hash = 2166136261;
+  for (const char of value) {
+    hash ^= char.codePointAt(0) || 0;
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
 function stableActorId(name: string): string {
-  return name
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'unknown';
+  const normalized = name.normalize('NFKC').trim().toLowerCase();
+  if (!normalized) return 'unknown';
+
+  const slug = normalized
+    .replace(/[^\p{Letter}\p{Number}]+/gu, '-')
+    .replace(/^-+|-+$/g, '');
+
+  if (slug) return slug;
+  return `actor-${hashText(normalized)}`;
 }
 
 async function loadVoiceDb() {

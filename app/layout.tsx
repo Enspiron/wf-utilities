@@ -3,7 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Navbar } from "@/components/navbar";
+import { SelectionTranslateTooltip } from "@/components/selection-translate-tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { SITE_DESCRIPTION, SITE_ICON_SRC, SITE_LOGO_SRC, SITE_NAME } from "@/lib/site-brand";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,8 +18,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "World Flipper Tools",
-  description: "Explore game data, characters, events, and build custom faces",
+  title: SITE_NAME,
+  description: SITE_DESCRIPTION,
+  icons: {
+    icon: [
+      { url: SITE_LOGO_SRC, type: "image/png", sizes: "40x40" },
+      { url: SITE_ICON_SRC, type: "image/png", sizes: "200x200" },
+    ],
+    apple: [{ url: SITE_ICON_SRC, type: "image/png", sizes: "200x200" }],
+    shortcut: [SITE_LOGO_SRC],
+  },
 };
 
 export default function RootLayout({
@@ -38,6 +48,7 @@ export default function RootLayout({
         >
           <Navbar />
           <main>{children}</main>
+          <SelectionTranslateTooltip />
           <Toaster richColors closeButton position="bottom-right" />
         </ThemeProvider>
       </body>

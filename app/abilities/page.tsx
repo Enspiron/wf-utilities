@@ -1,12 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Fragment, Suspense, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { ExternalLink, Loader2, Search, Sparkles } from 'lucide-react';
+import { CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  InlineError,
+  InlineLoading,
+  PageShell,
+  PaginationFooter,
+  SearchField,
+  SurfaceCard,
+} from '@/components/ui/page-primitives';
+import { searchDocuments } from '@/lib/search/core';
+import { buildAbilitySearchDocument } from '@/lib/search/documents';
+import { ExternalLink, Sparkles } from 'lucide-react';
 
 type AbilityRow = {
   /** Source file the ability came from. */
@@ -76,8 +86,10 @@ function rowsFromOrderedMap(map: Record<string, unknown>, source: Source): Abili
 
 const PAGE_SIZE = 100;
 
-export default function AbilitiesPage() {
-  const [query, setQuery] = useState('');
+function AbilitiesPageClient() {
+  const searchParams = useSearchParams();
+  const qParam = searchParams.get('q') || '';
+  const [query, setQuery] = useState(qParam);
   const [sourceFilter, setSourceFilter] = useState<Source | 'all'>('all');
   const [rows, setRows] = useState<AbilityRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -126,17 +138,19 @@ export default function AbilitiesPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows.filter((row) => {
+    const base = rows.filter((row) => {
       if (sourceFilter !== 'all' && row.source !== sourceFilter) return false;
-      if (!q) return true;
-      return (
-        row.key.toLowerCase().includes(q) ||
-        row.faceCode.toLowerCase().includes(q) ||
-        row.id.includes(q) ||
-        row.trigger.toLowerCase().includes(q)
-      );
+      return true;
     });
+
+    if (!query.trim()) return base;
+
+    const documents = base.map((row) => buildAbilitySearchDocument(row));
+    const rowByDocumentId = new Map(base.map((row) => [`ability:${row.source}:${row.id}`, row]));
+
+    return searchDocuments(documents, query).results
+      .map((result) => rowByDocumentId.get(result.document.id))
+      .filter((row): row is AbilityRow => Boolean(row));
   }, [rows, sourceFilter, query]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -150,8 +164,8 @@ export default function AbilitiesPage() {
   }, [rows]);
 
   return (
-    <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 p-4 sm:p-6'>
-      <Card className='border-border/60 bg-background/85 backdrop-blur'>
+    <PageShell>
+      <SurfaceCard>
         <CardHeader>
           <div className='flex flex-wrap items-center justify-between gap-3'>
             <div>
@@ -171,18 +185,14 @@ export default function AbilitiesPage() {
         </CardHeader>
         <CardContent className='flex flex-col gap-3'>
           <div className='flex flex-col gap-2 sm:flex-row sm:items-center'>
-            <div className='relative flex-1'>
-              <Search className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
-              <Input
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setPage(1);
-                }}
-                placeholder='Search by ability key, character face code, or ID…'
-                className='pl-9'
-              />
-            </div>
+            <SearchField
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
+              placeholder='Search ability key or use id:/face:/source:...'
+            />
             <div className='flex flex-wrap gap-1'>
               {(['all', 'ability', 'leader_ability', 'ability_soul'] as const).map((source) => (
                 <Button
@@ -202,16 +212,10 @@ export default function AbilitiesPage() {
             </div>
           </div>
 
-          {error && (
-            <p className='rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive'>
-              {error}
-            </p>
-          )}
+          {error && <InlineError>{error}</InlineError>}
 
           {loading ? (
-            <div className='flex items-center gap-2 text-sm text-muted-foreground'>
-              <Loader2 className='h-4 w-4 animate-spin' /> Loading abilities…
-            </div>
+            <InlineLoading>Loading abilities...</InlineLoading>
           ) : (
             <>
               <p className='text-xs text-muted-foreground'>
@@ -307,34 +311,37 @@ export default function AbilitiesPage() {
               </div>
 
               {totalPages > 1 && (
-                <div className='flex items-center justify-between text-xs text-muted-foreground'>
-                  <span>
-                    Page {safePage} of {totalPages}
-                  </span>
-                  <div className='flex gap-1'>
-                    <Button
-                      size='sm'
-                      variant='outline'
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={safePage === 1}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      size='sm'
-                      variant='outline'
-                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={safePage === totalPages}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
+                <PaginationFooter
+                  page={safePage}
+                  totalPages={totalPages}
+                  onPrevious={() => setPage((p) => Math.max(1, p - 1))}
+                  onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+                />
               )}
             </>
           )}
         </CardContent>
-      </Card>
-    </div>
+      </SurfaceCard>
+    </PageShell>
+  );
+}
+
+function AbilitiesPageFallback() {
+  return (
+    <PageShell>
+      <SurfaceCard>
+        <CardContent className='flex min-h-48 items-center justify-center'>
+          <InlineLoading>Loading abilities...</InlineLoading>
+        </CardContent>
+      </SurfaceCard>
+    </PageShell>
+  );
+}
+
+export default function AbilitiesPage() {
+  return (
+    <Suspense fallback={<AbilitiesPageFallback />}>
+      <AbilitiesPageClient />
+    </Suspense>
   );
 }

@@ -3,38 +3,20 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { LucideIcon } from 'lucide-react';
 import {
   ArrowRight,
-  CalendarDays,
   Compass,
-  Database,
   ExternalLink,
-  FileJson,
   Globe2,
   Hourglass,
-  Music2,
-  Package,
   RefreshCw,
   Search,
-  Swords,
-  Ticket,
-  User,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-
-type ToolCard = {
-  href: string;
-  title: string;
-  description: string;
-  icon: LucideIcon;
-  keywords: string[];
-  tone: string;
-};
 
 type SnapshotState = {
   orderedmapCategories: number | null;
@@ -50,89 +32,6 @@ type EosMilestone = {
   dateIso: string;
   tone: string;
 };
-
-const TOOL_CARDS: ToolCard[] = [
-  {
-    href: '/quests',
-    title: 'Quest Viewer',
-    description: 'Inspect quests, view artwork detection, and test BGM assets.',
-    icon: Swords,
-    keywords: ['quest', 'event', 'bgm', 'artwork', 'thumbnail'],
-    tone: 'from-amber-500/15 to-amber-500/5 border-amber-500/30',
-  },
-  {
-    href: '/calendar',
-    title: 'Event Calendar',
-    description: 'Track schedules, inspect date ranges, and drill into raw event payloads.',
-    icon: CalendarDays,
-    keywords: ['calendar', 'events', 'schedule', 'campaign'],
-    tone: 'from-cyan-500/15 to-cyan-500/5 border-cyan-500/30',
-  },
-  {
-    href: '/gacha',
-    title: 'Gacha Explorer',
-    description: 'Browse banner art, filter portals, and inspect odds pools in one place.',
-    icon: Ticket,
-    keywords: ['gacha', 'banner', 'portal', 'odds'],
-    tone: 'from-fuchsia-500/15 to-fuchsia-500/5 border-fuchsia-500/30',
-  },
-  {
-    href: '/feature-timeline',
-    title: 'Feature Timeline',
-    description: 'Track home banners, announcements, and guide dialogs across the EN/JP timeline.',
-    icon: Compass,
-    keywords: ['feature', 'timeline', 'banner', 'announcement', 'guide dialog'],
-    tone: 'from-blue-500/15 to-blue-500/5 border-blue-500/30',
-  },
-  {
-    href: '/orderedmap',
-    title: 'OrderedMap Explorer',
-    description: 'Navigate the full datalist tree and inspect category/file payloads.',
-    icon: FileJson,
-    keywords: ['orderedmap', 'datalist', 'json', 'assets'],
-    tone: 'from-indigo-500/15 to-indigo-500/5 border-indigo-500/30',
-  },
-  {
-    href: '/items',
-    title: 'Items',
-    description: 'Browse items/equipment with filtering and large result pagination.',
-    icon: Package,
-    keywords: ['items', 'equipment', 'materials', 'orbs'],
-    tone: 'from-emerald-500/15 to-emerald-500/5 border-emerald-500/30',
-  },
-  {
-    href: '/characters',
-    title: 'Characters',
-    description: 'Search character data and inspect parsed details.',
-    icon: Database,
-    keywords: ['characters', 'units', 'search'],
-    tone: 'from-rose-500/15 to-rose-500/5 border-rose-500/30',
-  },
-  {
-    href: '/music',
-    title: 'Music',
-    description: 'Browse and play BGM paths with fallback URL support.',
-    icon: Music2,
-    keywords: ['music', 'bgm', 'audio', 'tracks'],
-    tone: 'from-violet-500/15 to-violet-500/5 border-violet-500/30',
-  },
-  {
-    href: '/facebuilder',
-    title: 'Face Builder',
-    description: 'Build and export character face combinations.',
-    icon: User,
-    keywords: ['face', 'builder', 'portrait'],
-    tone: 'from-orange-500/15 to-orange-500/5 border-orange-500/30',
-  },
-  {
-    href: '/save-editor',
-    title: 'Save Editor',
-    description: 'Load fresh/mostly-complete templates or upload your own save JSON and edit.',
-    icon: FileJson,
-    keywords: ['save', 'editor', 'json', 'upload', 'template'],
-    tone: 'from-sky-500/15 to-sky-500/5 border-sky-500/30',
-  },
-];
 
 const EOS_MILESTONES: EosMilestone[] = [
   {
@@ -210,14 +109,6 @@ export default function HomeCommandCenter() {
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
-
-  const filteredTools = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return TOOL_CARDS;
-    return TOOL_CARDS.filter((tool) =>
-      `${tool.title} ${tool.description} ${tool.keywords.join(' ')}`.toLowerCase().includes(q)
-    );
-  }, [query]);
 
   const loadSnapshot = useCallback(async (isRefresh: boolean) => {
     if (isRefresh) {
@@ -304,11 +195,10 @@ export default function HomeCommandCenter() {
   const handleToolSearch = useCallback(
     (event: React.FormEvent) => {
       event.preventDefault();
-      if (filteredTools.length > 0) {
-        router.push(filteredTools[0].href);
-      }
+      const trimmedQuery = query.trim();
+      router.push(trimmedQuery ? `/search?q=${encodeURIComponent(trimmedQuery)}` : '/search');
     },
-    [filteredTools, router]
+    [query, router]
   );
 
   return (
@@ -348,12 +238,12 @@ export default function HomeCommandCenter() {
                   <Input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder='Search a tool (quests, calendar, items...)'
+                    placeholder='Search everything: character, item, quest, VA, face code...'
                     className='pl-9'
                   />
                 </div>
                 <Button type='submit' className='gap-1.5'>
-                  Go
+                  Search
                   <ArrowRight className='h-4 w-4' />
                 </Button>
               </form>

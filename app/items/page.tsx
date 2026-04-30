@@ -1,12 +1,14 @@
 'use client';
 
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { Suspense, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   ArrowUpDown,
   Grid3x3,
   List,
+  Loader2,
   Package2,
   RefreshCw,
   Search,
@@ -23,6 +25,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import ItemsPageSkeleton from '@/components/items-page-skeleton';
 import { buildImageUrlFromPath as buildImageUrl } from '@/lib/asset-url';
+import { searchDocuments } from '@/lib/search/core';
+import { buildItemSearchDocument } from '@/lib/search/documents';
 import { cn } from '@/lib/utils';
 import type { Item } from '../api/items/route';
 
@@ -128,14 +132,16 @@ function RarityIcon({ rarity, className }: { rarity: number; className?: string 
   );
 }
 
-export default function ItemsPage() {
+function ItemsPageClient() {
+  const searchParams = useSearchParams();
+  const qParam = searchParams.get('q') || '';
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
-  const [search, setSearch] = useState('');
-  const deferredSearch = useDeferredValue(search.trim().toLowerCase());
+  const [search, setSearch] = useState(qParam);
+  const deferredSearch = useDeferredValue(search.trim());
 
   const [typeFilter, setTypeFilter] = useState<ItemTypeFilter>('all');
   const [regionFilter, setRegionFilter] = useState<RegionFilter>('all');
@@ -205,6 +211,25 @@ export default function ItemsPage() {
     return items.filter((item) => item.type === typeFilter);
   }, [items, typeFilter]);
 
+  const itemSearchIndex = useMemo(
+    () =>
+      items.map((item) => {
+        const document = buildItemSearchDocument(item);
+        return { item, document };
+      }),
+    [items]
+  );
+
+  const itemByDocumentId = useMemo(
+    () => new Map(itemSearchIndex.map((entry) => [entry.document.id, entry.item])),
+    [itemSearchIndex]
+  );
+
+  const itemDocumentById = useMemo(
+    () => new Map(itemSearchIndex.map((entry) => [entry.document.id, entry.document])),
+    [itemSearchIndex]
+  );
+
   const itemCount = useMemo(() => items.filter((item) => item.type === 'item').length, [items]);
   const equipmentCount = useMemo(() => items.filter((item) => item.type === 'equipment').length, [items]);
 
@@ -252,13 +277,6 @@ export default function ItemsPage() {
 
   const filteredItems = useMemo(() => {
     const result = typedItems.filter((item) => {
-      if (deferredSearch) {
-        const haystack = `${item.id} ${item.name} ${item.devname} ${item.description} ${item.flavorText || ''} ${item.category}`.toLowerCase();
-        if (!haystack.includes(deferredSearch)) {
-          return false;
-        }
-      }
-
       if (selectedCategories.length > 0 && !selectedCategories.includes(item.category)) {
         return false;
       }
@@ -285,6 +303,16 @@ export default function ItemsPage() {
 
       return true;
     });
+
+    if (deferredSearch) {
+      const candidateDocuments = result
+        .map((item) => itemDocumentById.get(`${item.type}:${item.id}`))
+        .filter((document): document is ReturnType<typeof buildItemSearchDocument> => Boolean(document));
+
+      return searchDocuments(candidateDocuments, deferredSearch).results
+        .map((entry) => itemByDocumentId.get(entry.document.id))
+        .filter((item): item is Item => Boolean(item));
+    }
 
     const sorted = [...result];
     sorted.sort((a, b) => {
@@ -318,7 +346,17 @@ export default function ItemsPage() {
     });
 
     return sorted;
-  }, [deferredSearch, onlyWithArtwork, regionFilter, selectedCategories, selectedRarities, sortBy, typedItems]);
+  }, [
+    deferredSearch,
+    itemByDocumentId,
+    itemDocumentById,
+    onlyWithArtwork,
+    regionFilter,
+    selectedCategories,
+    selectedRarities,
+    sortBy,
+    typedItems,
+  ]);
 
   const itemsPerPage = viewMode === 'grid' ? GRID_PAGE_SIZE : LIST_PAGE_SIZE;
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
@@ -618,7 +656,7 @@ export default function ItemsPage() {
             <Input
               value={search}
               onChange={(event) => updateSearch(event.target.value)}
-              placeholder='Search by name, ID, devname...'
+              placeholder='Search name, ID, devname, or use id:/type:/rarity:/category:/has:img...'
               className='h-10 pl-9 pr-9'
             />
             {search && (
@@ -770,7 +808,7 @@ export default function ItemsPage() {
               <Input
                 value={search}
                 onChange={(event) => updateSearch(event.target.value)}
-                placeholder='Search by name, ID, devname...'
+                placeholder='Search name, ID, devname, or use id:/type:/rarity:/category:/has:img...'
                 className='h-10 pl-9 pr-9'
               />
               {search && (
@@ -936,5 +974,27 @@ export default function ItemsPage() {
         </SheetContent>
       </Sheet>
     </div>
+  );
+}
+
+function ItemsPageFallback() {
+  return (
+    <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 p-4 sm:p-6'>
+      <Card className='border-border/60 bg-background/85 backdrop-blur'>
+        <CardContent className='flex min-h-48 items-center justify-center'>
+          <div className='flex items-center gap-2 text-sm text-muted-foreground'>
+            <Loader2 className='h-4 w-4 animate-spin' /> Loading items...
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function ItemsPage() {
+  return (
+    <Suspense fallback={<ItemsPageFallback />}>
+      <ItemsPageClient />
+    </Suspense>
   );
 }

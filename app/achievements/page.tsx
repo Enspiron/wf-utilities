@@ -1,12 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Fragment, Suspense, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Award, ExternalLink, Loader2, Search, Trophy } from 'lucide-react';
+import { CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  InlineError,
+  InlineLoading,
+  PageShell,
+  PaginationFooter,
+  SearchField,
+  SurfaceCard,
+} from '@/components/ui/page-primitives';
+import { searchDocuments } from '@/lib/search/core';
+import { buildAchievementSearchDocument } from '@/lib/search/documents';
+import { Award, ExternalLink, Trophy } from 'lucide-react';
 
 type DegreeRow = {
   /** orderedmap row key (a numeric string). */
@@ -74,8 +84,10 @@ function rowsFromOrderedMap(map: Record<string, unknown>): DegreeRow[] {
 
 const PAGE_SIZE = 60;
 
-export default function AchievementsPage() {
-  const [query, setQuery] = useState('');
+function AchievementsPageClient() {
+  const searchParams = useSearchParams();
+  const qParam = searchParams.get('q') || '';
+  const [query, setQuery] = useState(qParam);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [groupByPrefix, setGroupByPrefix] = useState(false);
   const [rows, setRows] = useState<DegreeRow[]>([]);
@@ -123,21 +135,24 @@ export default function AchievementsPage() {
   }, [rows]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows.filter((row) => {
+    const base = rows.filter((row) => {
       if (categoryFilter !== 'all' && row.category !== categoryFilter) return false;
-      if (!q) return true;
-      return (
-        row.name.toLowerCase().includes(q) ||
-        row.criteria.toLowerCase().includes(q) ||
-        row.key.toLowerCase().includes(q) ||
-        row.prefix.toLowerCase().includes(q) ||
-        row.id.includes(q)
-      );
+      return true;
     });
+
+    if (!query.trim()) return base;
+
+    const documents = base.map((row) => buildAchievementSearchDocument(row));
+    const rowByDocumentId = new Map(base.map((row) => [`achievement:${row.id}`, row]));
+
+    return searchDocuments(documents, query).results
+      .map((result) => rowByDocumentId.get(result.document.id))
+      .filter((row): row is DegreeRow => Boolean(row));
   }, [rows, categoryFilter, query]);
 
   const sorted = useMemo(() => {
+    if (query.trim()) return filtered;
+
     return [...filtered].sort((a, b) => {
       if (groupByPrefix) {
         const p = a.prefix.localeCompare(b.prefix);
@@ -148,15 +163,15 @@ export default function AchievementsPage() {
       if (Number.isFinite(aN) && Number.isFinite(bN) && aN !== bN) return aN - bN;
       return a.key.localeCompare(b.key);
     });
-  }, [filtered, groupByPrefix]);
+  }, [filtered, groupByPrefix, query]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const paginated = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
-    <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 p-4 sm:p-6'>
-      <Card className='border-border/60 bg-background/85 backdrop-blur'>
+    <PageShell>
+      <SurfaceCard>
         <CardHeader>
           <div className='flex flex-wrap items-center justify-between gap-3'>
             <div>
@@ -176,18 +191,14 @@ export default function AchievementsPage() {
         </CardHeader>
         <CardContent className='flex flex-col gap-3'>
           <div className='flex flex-col gap-2 sm:flex-row sm:items-center'>
-            <div className='relative flex-1'>
-              <Search className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
-              <Input
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setPage(1);
-                }}
-                placeholder='Search by title, criteria, or key prefix…'
-                className='pl-9'
-              />
-            </div>
+            <SearchField
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
+              placeholder='Search title or use id:/prefix:/category:...'
+            />
             <Button
               variant={groupByPrefix ? 'default' : 'outline'}
               size='sm'
@@ -230,16 +241,10 @@ export default function AchievementsPage() {
             })}
           </div>
 
-          {error && (
-            <p className='rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive'>
-              {error}
-            </p>
-          )}
+          {error && <InlineError>{error}</InlineError>}
 
           {loading ? (
-            <div className='flex items-center gap-2 text-sm text-muted-foreground'>
-              <Loader2 className='h-4 w-4 animate-spin' /> Loading titles…
-            </div>
+            <InlineLoading>Loading titles...</InlineLoading>
           ) : (
             <>
               <p className='text-xs text-muted-foreground'>
@@ -307,34 +312,37 @@ export default function AchievementsPage() {
               </div>
 
               {totalPages > 1 && (
-                <div className='flex items-center justify-between text-xs text-muted-foreground'>
-                  <span>
-                    Page {safePage} of {totalPages}
-                  </span>
-                  <div className='flex gap-1'>
-                    <Button
-                      size='sm'
-                      variant='outline'
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={safePage === 1}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      size='sm'
-                      variant='outline'
-                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={safePage === totalPages}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
+                <PaginationFooter
+                  page={safePage}
+                  totalPages={totalPages}
+                  onPrevious={() => setPage((p) => Math.max(1, p - 1))}
+                  onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+                />
               )}
             </>
           )}
         </CardContent>
-      </Card>
-    </div>
+      </SurfaceCard>
+    </PageShell>
+  );
+}
+
+function AchievementsPageFallback() {
+  return (
+    <PageShell>
+      <SurfaceCard>
+        <CardContent className='flex min-h-48 items-center justify-center'>
+          <InlineLoading>Loading achievements...</InlineLoading>
+        </CardContent>
+      </SurfaceCard>
+    </PageShell>
+  );
+}
+
+export default function AchievementsPage() {
+  return (
+    <Suspense fallback={<AchievementsPageFallback />}>
+      <AchievementsPageClient />
+    </Suspense>
   );
 }

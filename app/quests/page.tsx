@@ -15,6 +15,8 @@ import {
   extractBgmTokens,
 } from "@/lib/asset-url";
 import { parseOrderedMapJson, ParsedItem } from "@/lib/json-parser";
+import { searchDocuments } from "@/lib/search/core";
+import { buildQuestSearchDocument } from "@/lib/search/documents";
 import {
   Copy,
   ExternalLink,
@@ -66,15 +68,6 @@ const matchesMode = (item: ParsedItem, mode: QuestMode) => {
     source.includes("advent") ||
     source.includes("story_event")
   );
-};
-
-const matchesSearch = (item: ParsedItem, query: string) => {
-  if (!query) return true;
-  const q = query.toLowerCase().trim();
-  if (!q) return true;
-  if (item.label.toLowerCase().includes(q)) return true;
-  if (item.id.toLowerCase().includes(q)) return true;
-  return Object.values(item.data).some((v) => String(v).toLowerCase().includes(q));
 };
 
 const getLongDescription = (item: ParsedItem) => {
@@ -571,6 +564,25 @@ export default function QuestViewerV2Page() {
     return map;
   }, [items]);
 
+  const questSearchIndex = useMemo(
+    () =>
+      items.map((item) => {
+        const document = buildQuestSearchDocument(item);
+        return { item, document };
+      }),
+    [items]
+  );
+
+  const questByDocumentId = useMemo(
+    () => new Map(questSearchIndex.map((entry) => [entry.document.id, entry.item])),
+    [questSearchIndex]
+  );
+
+  const questDocumentByKey = useMemo(
+    () => new Map(questSearchIndex.map((entry) => [questKey(entry.item), entry.document])),
+    [questSearchIndex]
+  );
+
   const sourceOptions = useMemo(
     () => Array.from(new Set(items.map((item) => getSourceFile(item)))).sort((a, b) => a.localeCompare(b)),
     [items]
@@ -578,7 +590,6 @@ export default function QuestViewerV2Page() {
 
   const filteredItems = useMemo(() => {
     const filtered = items.filter((item) => {
-      if (!matchesSearch(item, search)) return false;
       if (!matchesMode(item, mode)) return false;
       const sourceFile = getSourceFile(item);
       if (sourceFilter !== "all" && sourceFile !== sourceFilter) return false;
@@ -591,6 +602,17 @@ export default function QuestViewerV2Page() {
       if (favoritesOnly && !favorites.has(key)) return false;
       return true;
     });
+
+    if (search.trim()) {
+      return searchDocuments(
+        filtered
+          .map((item) => questDocumentByKey.get(questKey(item)))
+          .filter((document): document is ReturnType<typeof buildQuestSearchDocument> => Boolean(document)),
+        search
+      ).results
+        .map((entry) => questByDocumentId.get(entry.document.id))
+        .filter((item): item is ParsedItem => Boolean(item));
+    }
 
     filtered.sort((a, b) => {
       if (sortMode === "name_asc") return a.label.localeCompare(b.label);
@@ -614,6 +636,8 @@ export default function QuestViewerV2Page() {
     sortMode,
     assetSummary,
     favorites,
+    questByDocumentId,
+    questDocumentByKey,
   ]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / ITEMS_PER_PAGE));
@@ -1014,7 +1038,7 @@ export default function QuestViewerV2Page() {
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   ref={searchRef}
-                  placeholder="Search quests by name, id, or any field..."
+                  placeholder="Search quests or use id:/source:/mode:/has:/missing:..."
                   value={search}
                   onChange={(e) => {
                     setSearch(e.target.value);
@@ -1134,7 +1158,7 @@ export default function QuestViewerV2Page() {
             <Input
               value={jumpQuery}
               onChange={(e) => setJumpQuery(e.target.value)}
-              placeholder="Jump to ID/name/source..."
+              placeholder="Jump to ID, name, or source..."
               className="h-8 w-[240px]"
             />
             <Button size="sm" variant="outline" onClick={jumpToMatch}>Jump</Button>

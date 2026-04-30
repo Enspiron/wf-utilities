@@ -28,6 +28,10 @@ export interface Character {
   leaderAbilityNameEN?: string;
   voiceActorJP: string; // [9]
   voiceActorEN?: string;
+  /** Compatibility alias: false when the character is JP-exclusive. */
+  inTaiwan?: boolean;
+  /** True when present in JP datalist character data but absent from EN datalist character data. */
+  jpExclusive?: boolean;
   // Legacy fields for backwards compatibility
   description: string;
   title: string;
@@ -46,6 +50,7 @@ export interface CharacterFilters {
   stance?: string;
   search?: string;
   voiceActor?: string;
+  jpExclusive?: boolean;
 }
 
 const attributeNames: { [key: string]: string } = {
@@ -139,6 +144,7 @@ export function filterCharacters(
     if (filters.rarity && char.rarity !== filters.rarity) return false;
     if (filters.stance && char.stance !== filters.stance) return false;
     if (filters.voiceActor && !char.voiceActorJP.includes(filters.voiceActor)) return false;
+    if (filters.jpExclusive && char.jpExclusive !== true) return false;
     
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
@@ -219,6 +225,7 @@ interface CharacterAllFormat {
     va: string;
     Skill: string;
     LeaderBuff: string;
+    InTaiwan?: boolean;
     [key: string]: unknown;
   }>;
 }
@@ -236,7 +243,8 @@ const weaponRoleMap: Record<string, string> = {
 
 export function parseCharacterAllData(
   data: CharacterAllFormat,
-  faceCodeToId?: Record<string, string>
+  faceCodeToId?: Record<string, string>,
+  jpExclusiveFaceCodes?: ReadonlySet<string>
 ): Character[] {
   return data.chars.map((char, index) => {
     // Extract title from EN name (format: "[Title]\nName")
@@ -272,6 +280,8 @@ export function parseCharacterAllData(
       leaderAbilityNameEN: '',
       voiceActorJP: char.va || '',
       voiceActorEN: char.va || '',
+      inTaiwan: jpExclusiveFaceCodes ? !jpExclusiveFaceCodes.has(faceCode) : char.InTaiwan !== false,
+      jpExclusive: jpExclusiveFaceCodes ? jpExclusiveFaceCodes.has(faceCode) : char.InTaiwan === false,
       // Legacy fields
       description: '',
       title: titleEN || char.SubName || '',

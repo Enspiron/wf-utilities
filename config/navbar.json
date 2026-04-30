@@ -1,0 +1,60 @@
+{
+  "topLevel": {
+    "home": true,
+    "save-editor": true
+  },
+  "groups": {
+    "community": {
+      "visible": false,
+      "items": {
+        "profile": true,
+        "community": true,
+        "community-new": true,
+        "saves": true,
+        "community-moderation": true,
+        "login": true,
+        "register": true
+      }
+    },
+    "game-data": {
+      "visible": true,
+      "items": {
+        "characters": true,
+        "items": true,
+        "quests": true,
+        "abilities": true,
+        "achievements": true
+      }
+    },
+    "events": {
+      "visible": true,
+      "items": {
+        "calendar": true,
+        "calendar-v2": true,
+        "feature-timeline": true,
+        "gacha": true
+      }
+    },
+    "tools": {
+      "visible": true,
+      "items": {
+        "manaboard": true,
+        "orderedmap": true,
+        "exboost": true,
+        "fixed-party": true,
+        "share": true
+      }
+    },
+    "media": {
+      "visible": true,
+      "items": {
+        "facebuilder": true,
+        "scenes": true,
+        "sprite-sheets": true,
+        "music": true,
+        "voicedb": true,
+        "comics": true
+      }
+    }
+  }
+}

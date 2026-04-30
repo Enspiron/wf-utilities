@@ -32,13 +32,22 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
+import { COMMUNITY_FEATURES_ENABLED } from '@/lib/community/availability';
 
 type JsonObject = Record<string, unknown>;
 type SaveDocument = JsonObject & { data_headers: JsonObject; data: JsonObject };
 type TemplateKind = 'fresh' | 'mostly_complete';
 type EditorTab = 'general' | 'characters' | 'items' | 'equipment' | 'party' | 'story' | 'raw';
 type FieldKind = 'string' | 'number';
-type CharacterMeta = { id: string; faceCode: string; group: string; nameEN: string; nameJP: string; rarity: number };
+type CharacterMeta = {
+  id: string;
+  faceCode: string;
+  group: string;
+  nameEN: string;
+  nameJP: string;
+  rarity: number;
+  jpExclusive?: boolean;
+};
 type EquipmentRegion = 'gl' | 'ja';
 type ItemMeta = {
   id: string;
@@ -47,6 +56,8 @@ type ItemMeta = {
   icon: string;
   thumbnail: string;
   type: 'item' | 'equipment';
+  category: string;
+  rarity: number;
   sheetRegions: EquipmentRegion[];
 };
 type ManaBoardMeta = { board1Nodes: number; board2Nodes: number; hasBoard2: boolean };
@@ -110,6 +121,7 @@ type EquipmentBorderTone = 'default' | 'blue' | 'red' | 'gold';
 type EquipmentBorderFilter = 'all' | 'blue' | 'red' | 'gold';
 type EquipmentOwnedFilter = 'all' | 'owned' | 'unowned';
 type EquipmentProtectionFilter = 'all' | 'protected' | 'unprotected';
+type ItemRegionFilter = 'all' | 'global' | 'jp_only' | 'uncategorized';
 type CharacterAbilityTrackState = {
   key: string;
   label: string;
@@ -122,6 +134,12 @@ type PartyEntry = {
   groupId: string;
   slotId: string;
   value: JsonObject;
+};
+type PartySlotLoadout = {
+  characterIds: number[];
+  unisonCharacterIds: number[];
+  equipmentIds: number[];
+  soulIds: number[];
 };
 type PartyPickerKind = 'character' | 'equipment';
 type PartyPickerField = 'character_ids' | 'unison_character_ids' | 'equipment_ids' | 'ability_soul_ids';
@@ -180,6 +198,7 @@ type StoryQuestMeta = {
   categoryLabel: string;
   chapterKey: string;
   chapterLabel: string;
+  jpExclusive?: boolean;
 };
 type StoryQuestSourceConfig = {
   key: StoryQuestSourceKey;
@@ -187,6 +206,7 @@ type StoryQuestSourceConfig = {
   label: string;
   orderedMapPath: string;
   chapterKind?: 'main' | 'ex';
+  jpExclusive?: boolean;
 };
 type StoryDisplayEntry = StoryEntry & {
   meta: StoryQuestMeta | null;
@@ -317,6 +337,7 @@ const EQUIPMENT_PAGE_SIZE = 240;
 const PARTY_PAGE_SIZE = 24;
 const PARTY_GRID_COLUMN_COUNT = 6;
 const PARTY_GRID_ROW_COUNT = 10;
+const PARTY_LINK_SLOT_INDEXES = [0, 1, 2] as const;
 const PARTY_PICKER_SEARCH_DEBOUNCE_MS = 90;
 const PARTY_PICKER_INITIAL_RENDER_COUNT = 180;
 const PARTY_PICKER_RENDER_BATCH_SIZE = 180;
@@ -1002,6 +1023,52 @@ function normalizeCharacterArray(raw: unknown): unknown[] {
   return [];
 }
 
+function getCharacterFaceCode(raw: unknown): string {
+  return getStringValue(normalizeCharacterArray(raw)[0]).trim();
+}
+
+function buildCharacterFaceCodeSet(characterPayload: unknown): Set<string> {
+  if (!isObject(characterPayload)) return new Set();
+  const faceCodes = new Set<string>();
+  for (const raw of Object.values(characterPayload)) {
+    const faceCode = getCharacterFaceCode(raw);
+    if (faceCode) faceCodes.add(faceCode);
+  }
+  return faceCodes;
+}
+
+function isJpOnlySheetRegions(regions: EquipmentRegion[]): boolean {
+  return regions.includes('ja') && !regions.includes('gl');
+}
+
+function getCharacterSaveLockReason(meta?: CharacterMeta | null): string {
+  return meta?.jpExclusive ? 'JP-only characters can be viewed here but cannot be added to EN saves.' : '';
+}
+
+function getItemSaveLockReason(meta?: ItemMeta | null): string {
+  return meta && isJpOnlySheetRegions(meta.sheetRegions)
+    ? 'JP-only items and equipment can be viewed here but cannot be added to EN saves.'
+    : '';
+}
+
+function isJpExclusiveStorySource(source: StoryQuestSourceConfig): boolean {
+  if (source.jpExclusive) return true;
+  const normalizedPath = source.path.replace(/\\/g, '/').toLowerCase();
+  return normalizedPath.includes('/datalist/') && !normalizedPath.includes('/datalist_en/');
+}
+
+function getStorySaveLockReason(meta?: StoryQuestMeta | null): string {
+  return meta?.jpExclusive ? 'JP-only story data can be viewed here but cannot be added to EN saves.' : '';
+}
+
+function getItemRegionLabel(meta?: ItemMeta | null): string {
+  if (!meta || meta.sheetRegions.length === 0) return 'Uncategorized';
+  if (isJpOnlySheetRegions(meta.sheetRegions)) return 'JP only';
+  if (meta.sheetRegions.includes('gl') && meta.sheetRegions.includes('ja')) return 'GL / JP';
+  if (meta.sheetRegions.includes('gl')) return 'GL';
+  return 'Uncategorized';
+}
+
 function parseNumberList(value: string): number[] {
   return value
     .split(/[\s,]+/)
@@ -1340,6 +1407,23 @@ function buildEliyaCompLink(tokens: string[]): string {
   return `${ELIYA_COMP_BASE_URL}/${normalized.join('-')}.png`;
 }
 
+function buildPartySlotEliyaCompTokens(
+  loadout: PartySlotLoadout,
+  mapCharacterId: (id: number) => string,
+  mapEquipmentId: (id: number) => string
+): string[] {
+  return [
+    ...PARTY_LINK_SLOT_INDEXES.flatMap((slotIndex) => [
+      mapCharacterId(loadout.characterIds[slotIndex] ?? 0),
+      mapCharacterId(loadout.unisonCharacterIds[slotIndex] ?? 0),
+    ]),
+    ...PARTY_LINK_SLOT_INDEXES.flatMap((slotIndex) => [
+      mapEquipmentId(loadout.equipmentIds[slotIndex] ?? 0),
+      mapEquipmentId(loadout.soulIds[slotIndex] ?? 0),
+    ]),
+  ];
+}
+
 function getManaNodeIdForSlot(characterId: string, slotIndex: number): number | null {
   const cid = Number.parseInt(characterId, 10);
   if (!Number.isFinite(cid) || cid <= 0) return null;
@@ -1513,6 +1597,8 @@ function SaveEditorPageClient() {
 
   const [itemSearch, setItemSearch] = useState('');
   const [itemOwnedFilter, setItemOwnedFilter] = useState<ItemOwnedFilter>('all');
+  const [itemCategoryFilter, setItemCategoryFilter] = useState('all');
+  const [itemRegionFilter, setItemRegionFilter] = useState<ItemRegionFilter>('all');
   const [itemPage, setItemPage] = useState(1);
   const [newItemId, setNewItemId] = useState('');
   const [newItemQuantity, setNewItemQuantity] = useState('9999');
@@ -1653,6 +1739,7 @@ function SaveEditorPageClient() {
         const [
           itemsRes,
           characterRes,
+          enCharacterRes,
           charTextENRes,
           charTextJPRes,
           manaBoardListRes,
@@ -1664,12 +1751,13 @@ function SaveEditorPageClient() {
         ] = await Promise.all([
           fetchFirstAvailable(['/api/items'], { cache: 'no-store' }),
           fetchFirstAvailable(getDataFallbackUrls('/data/character.json'), { cache: 'no-store' }),
+          fetchFirstAvailable(getDataFallbackUrls('/data/datalist_en/character/character.json'), { cache: 'no-store' }),
           fetchFirstAvailable(['/api/character-text?lang=en'], { cache: 'no-store' }),
           fetchFirstAvailable(['/api/character-text?lang=jp'], { cache: 'no-store' }),
           fetchFirstAvailable(['/api/manaboard/list'], { cache: 'no-store' }),
           fetchFirstAvailable(getDataFallbackUrls('/data/characters_all.json'), { cache: 'no-store' }),
           fetchFirstAvailable(getDataFallbackUrls('/data/mostly_complete_save.json'), { cache: 'no-store' }),
-          fetchFirstAvailable(getDataFallbackUrls('/data/datalist/equipment_enhancement/equipment_enhancement_status.json'), {
+          fetchFirstAvailable(getDataFallbackUrls('/data/datalist_en/equipment_enhancement/equipment_enhancement_status.json'), {
             cache: 'no-store',
           }),
           fetchFirstAvailable(getDataFallbackUrls('/data/datalist/ex_boost/ex_status.json'), { cache: 'no-store' }),
@@ -1692,14 +1780,22 @@ function SaveEditorPageClient() {
                   .map((entry) => getStringValue(entry))
                   .filter((entry): entry is EquipmentRegion => entry === 'gl' || entry === 'ja')
               : [];
+            const existingItem = nextItems[id];
+            if (existingItem?.type === 'equipment' && type !== 'equipment') {
+              continue;
+            }
+            const nextSheetRegions = sheetRegions.length > 0 ? sheetRegions : existingItem?.sheetRegions || [];
             nextItems[id] = {
+              ...existingItem,
               id,
-              devName: getStringValue(rawItem.devname ?? rawItem.devName),
-              name: getStringValue(rawItem.name) || id,
-              icon: getStringValue(rawItem.icon),
-              thumbnail: getStringValue(rawItem.thumbnail),
+              devName: getStringValue(rawItem.devname ?? rawItem.devName) || existingItem?.devName || '',
+              name: getStringValue(rawItem.name) || existingItem?.name || id,
+              icon: getStringValue(rawItem.icon) || existingItem?.icon || '',
+              thumbnail: getStringValue(rawItem.thumbnail) || existingItem?.thumbnail || '',
               type,
-              sheetRegions,
+              category: getStringValue(rawItem.category) || existingItem?.category || 'Other',
+              rarity: getNumberValue(rawItem.rarity, existingItem?.rarity ?? 0),
+              sheetRegions: nextSheetRegions,
             };
           }
           setItemMetaById(nextItems);
@@ -1709,13 +1805,16 @@ function SaveEditorPageClient() {
           const characterJson = (await characterRes.json()) as Record<string, unknown>;
           const charTextENPayload = charTextENRes ? ((await charTextENRes.json()) as { data?: unknown }) : {};
           const charTextJPPayload = charTextJPRes ? ((await charTextJPRes.json()) as { data?: unknown }) : {};
+          const enCharacterPayload = enCharacterRes ? await enCharacterRes.json() : null;
           const textEN = isObject(charTextENPayload.data) ? (charTextENPayload.data as Record<string, unknown>) : {};
           const textJP = isObject(charTextJPPayload.data) ? (charTextJPPayload.data as Record<string, unknown>) : {};
+          const enCharacterFaceCodes = buildCharacterFaceCodeSet(enCharacterPayload);
+          const hasEnCharacterIndex = enCharacterFaceCodes.size > 0;
 
           const nextCharacters: Record<string, CharacterMeta> = {};
           for (const [id, rawValue] of Object.entries(characterJson)) {
             const parsed = normalizeCharacterArray(rawValue);
-            const faceCode = getStringValue(parsed[0]);
+            const faceCode = getStringValue(parsed[0]).trim();
             if (!faceCode) continue;
 
             const enArr = textEN[id];
@@ -1730,6 +1829,7 @@ function SaveEditorPageClient() {
               nameEN: enName,
               nameJP: jpName,
               rarity: getNumberValue(parsed[3], 4) + 1,
+              jpExclusive: hasEnCharacterIndex && !enCharacterFaceCodes.has(faceCode),
             };
           }
 
@@ -1956,6 +2056,7 @@ function SaveEditorPageClient() {
           const payload = (await response.json()) as unknown;
           const sourceCategoryName = getCategoryNameForSourceKey(source.key);
           const sourceCategoryLabel = formatQuestCategoryLabel(sourceCategoryName);
+          const sourceJpExclusive = isJpExclusiveStorySource(source);
           const sourceMap: Record<string, StoryQuestMeta> = {};
 
           collectStoryRows(payload, (row, path) => {
@@ -1982,6 +2083,7 @@ function SaveEditorPageClient() {
               categoryLabel: sourceCategoryLabel,
               chapterKey,
               chapterLabel,
+              jpExclusive: sourceJpExclusive,
             };
 
             const existingInSource = sourceMap[parsed.questId];
@@ -2088,21 +2190,14 @@ function SaveEditorPageClient() {
     return new Set(characterEntries.map(([id]) => id));
   }, [characterEntries]);
 
-  const globalCharacterIdSet = useMemo(() => new Set(globalCharacterIds), [globalCharacterIds]);
-
   const allCharacterIds = useMemo(() => {
-    if (characterCatalogIds.length > 0) {
-      if (globalCharacterIds.length > 0) {
-        return characterCatalogIds.filter((id) => globalCharacterIdSet.has(id));
-      }
-      return characterCatalogIds;
-    }
-
     const all = new Set<string>();
+    for (const id of characterCatalogIds) all.add(id);
+    for (const id of globalCharacterIds) all.add(id);
     for (const id of Object.keys(characterMetaById)) all.add(id);
     for (const [id] of characterEntries) all.add(id);
     return Array.from(all).sort((a, b) => getNumberValue(a, 0) - getNumberValue(b, 0));
-  }, [characterCatalogIds, characterEntries, characterMetaById, globalCharacterIdSet, globalCharacterIds.length]);
+  }, [characterCatalogIds, characterEntries, characterMetaById, globalCharacterIds]);
 
   const ownedVisibleCharacterCount = useMemo(() => {
     const visibleSet = new Set(allCharacterIds);
@@ -2125,6 +2220,22 @@ function SaveEditorPageClient() {
     const value = saveDocument.data.user_character_list[selectedCharacterId];
     return isObject(value) ? value : null;
   }, [saveDocument, selectedCharacterId]);
+
+  const selectedCharacterMeta = useMemo(() => {
+    if (!selectedCharacterId) return null;
+    return characterMetaById[selectedCharacterId] ?? null;
+  }, [characterMetaById, selectedCharacterId]);
+
+  const selectedCharacterSaveLockReason = useMemo(
+    () => getCharacterSaveLockReason(selectedCharacterMeta),
+    [selectedCharacterMeta]
+  );
+
+  const newCharacterSaveLockReason = useMemo(() => {
+    const id = newCharacterId.trim();
+    if (!id) return '';
+    return getCharacterSaveLockReason(characterMetaById[id]);
+  }, [characterMetaById, newCharacterId]);
 
   const exBoostStatusOptions = useMemo(() => {
     return Object.values(exBoostStatusMetaById)
@@ -2550,6 +2661,7 @@ function SaveEditorPageClient() {
       name: meta?.nameEN || meta?.nameJP || meta?.faceCode || `Character ${id}`,
       faceCode: meta?.faceCode || '',
       devName: catalogMeta?.devName || meta?.faceCode || '',
+      saveLockReason: getCharacterSaveLockReason(meta),
       hasMb2,
       levelStop,
       overLimitStep,
@@ -2604,22 +2716,51 @@ function SaveEditorPageClient() {
     });
   }, [itemEntries, itemMetaById]);
 
+  const itemCategoryOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const id of allItemIds) {
+      const category = itemMetaById[id]?.category || 'Other';
+      counts.set(category, (counts.get(category) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([category, count]) => ({ category, count }))
+      .sort((left, right) => {
+        if (right.count !== left.count) return right.count - left.count;
+        return left.category.localeCompare(right.category);
+      });
+  }, [allItemIds, itemMetaById]);
+
   const searchedItemIds = useMemo(() => {
     const query = itemSearch.trim().toLowerCase();
     if (!query) return allItemIds;
     return allItemIds.filter((id) => {
       if (id.toLowerCase().includes(query)) return true;
       const meta = itemMetaById[id];
-      const name = getStringValue(meta?.name).toLowerCase();
-      return name.includes(query);
+      const haystack = [meta?.name, meta?.devName, meta?.category, getItemRegionLabel(meta)].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(query);
     });
   }, [allItemIds, itemMetaById, itemSearch]);
 
-  const filteredItemIds = useMemo(() => {
+  const ownershipFilteredItemIds = useMemo(() => {
     if (itemOwnedFilter === 'all') return searchedItemIds;
     const wantsOwned = itemOwnedFilter === 'owned';
     return searchedItemIds.filter((id) => ownedItemIds.has(id) === wantsOwned);
   }, [itemOwnedFilter, ownedItemIds, searchedItemIds]);
+
+  const categoryFilteredItemIds = useMemo(() => {
+    if (itemCategoryFilter === 'all') return ownershipFilteredItemIds;
+    return ownershipFilteredItemIds.filter((id) => (itemMetaById[id]?.category || 'Other') === itemCategoryFilter);
+  }, [itemCategoryFilter, itemMetaById, ownershipFilteredItemIds]);
+
+  const filteredItemIds = useMemo(() => {
+    if (itemRegionFilter === 'all') return categoryFilteredItemIds;
+    return categoryFilteredItemIds.filter((id) => {
+      const meta = itemMetaById[id];
+      if (itemRegionFilter === 'jp_only') return Boolean(getItemSaveLockReason(meta));
+      if (itemRegionFilter === 'global') return Boolean(meta?.sheetRegions.includes('gl'));
+      return !meta || meta.sheetRegions.length === 0;
+    });
+  }, [categoryFilteredItemIds, itemMetaById, itemRegionFilter]);
 
   const itemTotalPages = Math.max(1, Math.ceil(filteredItemIds.length / ITEM_PAGE_SIZE));
   const visibleItemIds = useMemo(() => {
@@ -2642,6 +2783,14 @@ function SaveEditorPageClient() {
     return itemMetaById[selectedItemId] ?? null;
   }, [itemMetaById, selectedItemId]);
 
+  const selectedItemSaveLockReason = useMemo(() => getItemSaveLockReason(selectedItemMeta), [selectedItemMeta]);
+
+  const newItemSaveLockReason = useMemo(() => {
+    const id = newItemId.trim();
+    if (!id) return '';
+    return getItemSaveLockReason(itemMetaById[id]);
+  }, [itemMetaById, newItemId]);
+
   const selectedItemDisplayName = useMemo(() => {
     if (!selectedItemId) return '';
     return selectedItemMeta?.name || `Item ${selectedItemId}`;
@@ -2662,6 +2811,9 @@ function SaveEditorPageClient() {
       owned: ownedItemIds.has(id),
       name: meta?.name || `Item ${id}`,
       type: meta?.type ?? 'item',
+      category: meta?.category || 'Other',
+      regionLabel: getItemRegionLabel(meta),
+      saveLockReason: getItemSaveLockReason(meta),
     };
   }, [itemContextMenu.itemId, itemMetaById, itemQuantityById, ownedItemIds]);
 
@@ -2704,8 +2856,6 @@ function SaveEditorPageClient() {
     for (const [id] of equipmentEntries) idSet.add(id);
     for (const [id, meta] of Object.entries(itemMetaById)) {
       if (meta.type !== 'equipment') continue;
-      // Save editor is EN-only: do not include JP-exclusive equipment in addable catalog IDs.
-      if (meta.sheetRegions.length > 0 && !meta.sheetRegions.includes('gl')) continue;
       idSet.add(id);
     }
     return Array.from(idSet).sort((a, b) => {
@@ -2851,6 +3001,7 @@ function SaveEditorPageClient() {
       id,
       name: itemMetaById[id]?.name || `Equipment ${id}`,
       owned,
+      saveLockReason: getItemSaveLockReason(itemMetaById[id]),
       tone: equipmentBorderToneById[id] ?? 'default',
       levelPoint: equipment
         ? getEquipmentLevelPointFromSaveLevel(getNumberValue(equipment.level, EQUIPMENT_SAVE_LEVEL_MIN))
@@ -2885,6 +3036,22 @@ function SaveEditorPageClient() {
     if (!selectedEquipmentId) return null;
     return equipmentById[selectedEquipmentId] ?? null;
   }, [equipmentById, selectedEquipmentId]);
+
+  const selectedEquipmentMeta = useMemo(() => {
+    if (!selectedEquipmentId) return null;
+    return itemMetaById[selectedEquipmentId] ?? null;
+  }, [itemMetaById, selectedEquipmentId]);
+
+  const selectedEquipmentSaveLockReason = useMemo(
+    () => getItemSaveLockReason(selectedEquipmentMeta),
+    [selectedEquipmentMeta]
+  );
+
+  const newEquipmentSaveLockReason = useMemo(() => {
+    const id = newEquipmentId.trim();
+    if (!id) return '';
+    return getItemSaveLockReason(itemMetaById[id]);
+  }, [itemMetaById, newEquipmentId]);
 
   const selectedEquipmentLevel = useMemo(() => {
     return getNumberValue(selectedEquipment?.level, 1);
@@ -3146,7 +3313,10 @@ function SaveEditorPageClient() {
       if (!sourceKey) continue;
       const sourceMap = storyQuestMetaBySourceKey[sourceKey];
       if (!sourceMap) continue;
-      const questIds = Object.keys(sourceMap).sort((left, right) => getNumberValue(left, 0) - getNumberValue(right, 0));
+      const questIds = Object.entries(sourceMap)
+        .filter(([, meta]) => !getStorySaveLockReason(meta))
+        .map(([questId]) => questId)
+        .sort((left, right) => getNumberValue(left, 0) - getNumberValue(right, 0));
       if (questIds.length > 0) {
         next[chapterId] = questIds;
       }
@@ -3411,7 +3581,12 @@ function SaveEditorPageClient() {
   }, [rawHighlightMatches]);
 
   useEffect(() => setCharacterPage(1), [characterBorderFilter, characterMb2Filter, characterSearch]);
-  useEffect(() => setItemPage(1), [itemOwnedFilter, itemSearch]);
+  useEffect(() => setItemPage(1), [itemCategoryFilter, itemOwnedFilter, itemRegionFilter, itemSearch]);
+  useEffect(() => {
+    if (itemCategoryFilter === 'all') return;
+    if (itemCategoryOptions.some((entry) => entry.category === itemCategoryFilter)) return;
+    setItemCategoryFilter('all');
+  }, [itemCategoryFilter, itemCategoryOptions]);
   useEffect(
     () => setEquipmentPage(1),
     [equipmentBorderFilter, equipmentOwnedFilter, equipmentProtectionFilter, equipmentSearch]
@@ -3615,6 +3790,11 @@ function SaveEditorPageClient() {
   };
 
   const importSharedSave = async (value: string) => {
+    if (!COMMUNITY_FEATURES_ENABLED) {
+      setNotice({ type: 'error', message: 'Shared saves are currently unavailable.' });
+      return;
+    }
+
     const slug = extractSharedSaveSlug(value);
     if (!slug) {
       setNotice({ type: 'error', message: 'Enter a shared save slug or link first.' });
@@ -3645,6 +3825,8 @@ function SaveEditorPageClient() {
   };
 
   useEffect(() => {
+    if (!COMMUNITY_FEATURES_ENABLED) return;
+
     const slugFromQuery = extractSharedSaveSlug(searchParams.get('importShare') || '');
     if (!slugFromQuery) return;
     if (sharedImportHandledRef.current === slugFromQuery) return;
@@ -3914,9 +4096,15 @@ function SaveEditorPageClient() {
     }
   };
 
-  const addCharacterById = (characterId: string) => {
+  const addCharacterById = (characterId: string): boolean => {
     const id = characterId.trim();
-    if (!id) return;
+    if (!id) return false;
+
+    const lockReason = getCharacterSaveLockReason(characterMetaById[id]);
+    if (lockReason) {
+      setNotice({ type: 'error', message: `Character ${id} is JP-only and cannot be added to EN saves.` });
+      return false;
+    }
 
     applySaveMutation((draft) => {
       const data = getOrCreateObject(draft, 'data');
@@ -3943,13 +4131,15 @@ function SaveEditorPageClient() {
         manaList[id] = [];
       }
     });
+    return true;
   };
 
   const addCharacter = () => {
     const id = newCharacterId.trim();
     if (!id) return;
 
-    addCharacterById(id);
+    const added = addCharacterById(id);
+    if (!added) return;
     setNewCharacterId('');
     setNotice({ type: 'success', message: `Character ${id} added.` });
   };
@@ -4236,18 +4426,31 @@ function SaveEditorPageClient() {
     setNotice({ type: 'info', message: 'Applied max settings to all owned characters.' });
   };
 
-  const handleItemQuantityChange = (itemId: string, value: string) => {
+  const handleItemQuantityChange = (itemId: string, value: string): boolean => {
+    const quantity = toNumeric(value, 0);
+    const lockReason = getItemSaveLockReason(itemMetaById[itemId]);
+    if (!ownedItemIds.has(itemId) && lockReason) {
+      setNotice({ type: 'error', message: `Item ${itemId} is JP-only and cannot be added to EN saves.` });
+      return false;
+    }
+
     applySaveMutation((draft) => {
       const data = getOrCreateObject(draft, 'data');
       const itemList = getOrCreateObject(data, 'item_list');
-      itemList[itemId] = toNumeric(value, 0);
+      itemList[itemId] = quantity;
     });
+    return true;
   };
 
   const addItem = () => {
     const id = newItemId.trim();
     if (!id) return;
     const qty = toNumeric(newItemQuantity, 0);
+    const lockReason = getItemSaveLockReason(itemMetaById[id]);
+    if (!ownedItemIds.has(id) && lockReason) {
+      setNotice({ type: 'error', message: `Item ${id} is JP-only and cannot be added to EN saves.` });
+      return;
+    }
     applySaveMutation((draft) => {
       const data = getOrCreateObject(draft, 'data');
       const itemList = getOrCreateObject(data, 'item_list');
@@ -4284,7 +4487,8 @@ function SaveEditorPageClient() {
   };
 
   const applyItemContextQuantity = (itemId: string, quantity: number, noticeMessage: string) => {
-    handleItemQuantityChange(itemId, String(Math.max(0, quantity)));
+    const updated = handleItemQuantityChange(itemId, String(Math.max(0, quantity)));
+    if (!updated) return;
     setNotice({ type: 'info', message: noticeMessage });
     closeItemContextMenu();
   };
@@ -4292,7 +4496,8 @@ function SaveEditorPageClient() {
   const applyItemContextDelta = (itemId: string, delta: number) => {
     const currentQuantity = itemQuantityById[itemId] ?? 0;
     const nextQuantity = Math.max(0, currentQuantity + delta);
-    handleItemQuantityChange(itemId, String(nextQuantity));
+    const updated = handleItemQuantityChange(itemId, String(nextQuantity));
+    if (!updated) return;
     setNotice({ type: 'info', message: `Item ${itemId} quantity set to ${nextQuantity}.` });
     closeItemContextMenu();
   };
@@ -4325,14 +4530,25 @@ function SaveEditorPageClient() {
 
   const setVisibleItems = (qty: number) => {
     if (visibleItemIds.length === 0) return;
+    let skippedLocked = 0;
     applySaveMutation((draft) => {
       const data = getOrCreateObject(draft, 'data');
       const itemList = getOrCreateObject(data, 'item_list');
       for (const id of visibleItemIds) {
+        if (!ownedItemIds.has(id) && getItemSaveLockReason(itemMetaById[id])) {
+          skippedLocked += 1;
+          continue;
+        }
         itemList[id] = qty;
       }
     });
-    setNotice({ type: 'info', message: `Visible items set to ${qty}.` });
+    setNotice({
+      type: 'info',
+      message:
+        skippedLocked > 0
+          ? `Visible items set to ${qty}. Skipped ${skippedLocked} JP-only item(s).`
+          : `Visible items set to ${qty}.`,
+    });
   };
 
   const setAllItems = (qty: number) => {
@@ -4359,24 +4575,27 @@ function SaveEditorPageClient() {
     setNotice({ type: 'info', message: 'Removed zero-quantity item entries from the save.' });
   };
 
-  const handleEquipmentFieldChange = (equipmentId: string, field: string, value: string | boolean) => {
+  const handleEquipmentFieldChange = (equipmentId: string, field: string, value: string | boolean): boolean => {
+    const lockReason = getItemSaveLockReason(itemMetaById[equipmentId]);
+    if (!ownedEquipmentIds.has(equipmentId) && lockReason) {
+      setNotice({ type: 'error', message: `Equipment ${equipmentId} is JP-only and cannot be added to EN saves.` });
+      return false;
+    }
+
     applySaveMutation((draft) => {
       const data = getOrCreateObject(draft, 'data');
       const equipmentList = getOrCreateObject(data, 'user_equipment_list');
       const equipment = getOrCreateObject(equipmentList, equipmentId);
       equipment[field] = typeof value === 'boolean' ? value : toNumeric(value, 0);
     });
+    return true;
   };
 
   const addEquipmentById = (equipmentId: string): boolean => {
     const id = equipmentId.trim();
     if (!id) return false;
-    const equipmentMeta = itemMetaById[id];
-    if (
-      equipmentMeta?.type === 'equipment' &&
-      equipmentMeta.sheetRegions.length > 0 &&
-      !equipmentMeta.sheetRegions.includes('gl')
-    ) {
+    const lockReason = getItemSaveLockReason(itemMetaById[id]);
+    if (lockReason) {
       setNotice({ type: 'error', message: `Equipment ${id} is JP-only and cannot be added to EN saves.` });
       return false;
     }
@@ -4450,24 +4669,29 @@ function SaveEditorPageClient() {
     setSelectedEquipmentId(equipmentId);
   };
 
-  const handleEquipmentLevelPointChange = (equipmentId: string, levelPoint: number) => {
+  const handleEquipmentLevelPointChange = (equipmentId: string, levelPoint: number): boolean => {
     const saveLevel = getEquipmentSaveLevelFromLevelPoint(levelPoint);
-    handleEquipmentFieldChange(equipmentId, 'level', String(saveLevel));
+    return handleEquipmentFieldChange(equipmentId, 'level', String(saveLevel));
   };
 
-  const handleEquipmentEnhancementChange = (equipmentId: string, enhancementStatus: number) => {
+  const handleEquipmentEnhancementChange = (equipmentId: string, enhancementStatus: number): boolean => {
     const options = equipmentEnhancementOptionsById[equipmentId] ?? [];
     if (options.length === 0 || enhancementStatus === 0) {
-      handleEquipmentFieldChange(equipmentId, 'enhancement_level', '0');
-      return;
+      return handleEquipmentFieldChange(equipmentId, 'enhancement_level', '0');
     }
     if (!options.includes(enhancementStatus)) {
-      return;
+      return false;
     }
-    handleEquipmentFieldChange(equipmentId, 'enhancement_level', String(enhancementStatus));
+    return handleEquipmentFieldChange(equipmentId, 'enhancement_level', String(enhancementStatus));
   };
 
-  const applyEquipmentPreset = (equipmentId: string, mode: 'min' | 'max' | 'max_lock') => {
+  const applyEquipmentPreset = (equipmentId: string, mode: 'min' | 'max' | 'max_lock'): boolean => {
+    const lockReason = getItemSaveLockReason(itemMetaById[equipmentId]);
+    if (!ownedEquipmentIds.has(equipmentId) && lockReason) {
+      setNotice({ type: 'error', message: `Equipment ${equipmentId} is JP-only and cannot be added to EN saves.` });
+      return false;
+    }
+
     applySaveMutation((draft) => {
       const data = getOrCreateObject(draft, 'data');
       const equipmentList = getOrCreateObject(data, 'user_equipment_list');
@@ -4488,17 +4712,20 @@ function SaveEditorPageClient() {
         equipment.protection = true;
       }
     });
+    return true;
   };
 
   const applyEquipmentContextPreset = (equipmentId: string, mode: 'min' | 'max' | 'max_lock') => {
-    applyEquipmentPreset(equipmentId, mode);
+    const updated = applyEquipmentPreset(equipmentId, mode);
+    if (!updated) return;
     const modeLabel = mode === 'min' ? 'min' : mode === 'max' ? 'max' : 'max + lock';
     setNotice({ type: 'info', message: `Equipment ${equipmentId} set to ${modeLabel}.` });
     closeEquipmentContextMenu();
   };
 
   const applyEquipmentContextLevelPoint = (equipmentId: string, levelPoint: number) => {
-    handleEquipmentLevelPointChange(equipmentId, levelPoint);
+    const updated = handleEquipmentLevelPointChange(equipmentId, levelPoint);
+    if (!updated) return;
     setNotice({
       type: 'info',
       message: `Equipment ${equipmentId} level set to ${levelPoint}/${EQUIPMENT_LEVEL_POINT_MAX}.`,
@@ -4506,7 +4733,8 @@ function SaveEditorPageClient() {
   };
 
   const applyEquipmentContextEnhancement = (equipmentId: string, enhancementStatus: number) => {
-    handleEquipmentEnhancementChange(equipmentId, enhancementStatus);
+    const updated = handleEquipmentEnhancementChange(equipmentId, enhancementStatus);
+    if (!updated) return;
     setNotice({
       type: 'info',
       message:
@@ -4517,7 +4745,8 @@ function SaveEditorPageClient() {
   };
 
   const applyEquipmentContextProtection = (equipmentId: string, locked: boolean) => {
-    handleEquipmentFieldChange(equipmentId, 'protection', locked);
+    const updated = handleEquipmentFieldChange(equipmentId, 'protection', locked);
+    if (!updated) return;
     setNotice({
       type: 'info',
       message: locked ? `Equipment ${equipmentId} locked.` : `Equipment ${equipmentId} unlocked.`,
@@ -4726,6 +4955,29 @@ function SaveEditorPageClient() {
     return toNumeric(id, fallbackId);
   };
 
+  const getPartySelectionLockReason = (field: PartyPickerField, selectedId: string | number): string => {
+    const numericId = getNumberValue(selectedId, 0);
+    if (numericId <= 0) return '';
+    const id = String(numericId);
+    if (field === 'character_ids' || field === 'unison_character_ids') {
+      return getCharacterSaveLockReason(characterMetaById[id]);
+    }
+    return getItemSaveLockReason(itemMetaById[id]);
+  };
+
+  const filterSaveLockedPartyIds = (
+    ids: number[],
+    field: PartyPickerField,
+    blockedIds: number[]
+  ): number[] => {
+    return ids.map((id) => {
+      if (id <= 0) return 0;
+      if (!getPartySelectionLockReason(field, id)) return id;
+      blockedIds.push(id);
+      return 0;
+    });
+  };
+
   const copyTextToClipboard = async (text: string): Promise<boolean> => {
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
       try {
@@ -4777,20 +5029,11 @@ function SaveEditorPageClient() {
 
     const missingCharacterIds: number[] = [];
     const missingEquipmentIds: number[] = [];
-    const tokens = [
-      mapPartyIdToCompToken(loadout.characterIds[0], characterCompTokenById, missingCharacterIds),
-      mapPartyIdToCompToken(loadout.unisonCharacterIds[0], characterCompTokenById, missingCharacterIds),
-      mapPartyIdToCompToken(loadout.characterIds[1], characterCompTokenById, missingCharacterIds),
-      mapPartyIdToCompToken(loadout.unisonCharacterIds[1], characterCompTokenById, missingCharacterIds),
-      mapPartyIdToCompToken(loadout.characterIds[2], characterCompTokenById, missingCharacterIds),
-      mapPartyIdToCompToken(loadout.unisonCharacterIds[2], characterCompTokenById, missingCharacterIds),
-      mapPartyIdToCompToken(loadout.equipmentIds[0], equipmentCompTokenById, missingEquipmentIds),
-      mapPartyIdToCompToken(loadout.soulIds[0], equipmentCompTokenById, missingEquipmentIds),
-      mapPartyIdToCompToken(loadout.equipmentIds[1], equipmentCompTokenById, missingEquipmentIds),
-      mapPartyIdToCompToken(loadout.soulIds[1], equipmentCompTokenById, missingEquipmentIds),
-      mapPartyIdToCompToken(loadout.equipmentIds[2], equipmentCompTokenById, missingEquipmentIds),
-      mapPartyIdToCompToken(loadout.soulIds[2], equipmentCompTokenById, missingEquipmentIds),
-    ];
+    const tokens = buildPartySlotEliyaCompTokens(
+      loadout,
+      (id) => mapPartyIdToCompToken(id, characterCompTokenById, missingCharacterIds),
+      (id) => mapPartyIdToCompToken(id, equipmentCompTokenById, missingEquipmentIds)
+    );
 
     const link = buildEliyaCompLink(tokens);
     const copied = await copyTextToClipboard(link);
@@ -4829,26 +5072,28 @@ function SaveEditorPageClient() {
 
     const missingCharacterTokens: string[] = [];
     const missingEquipmentTokens: string[] = [];
-    const characterIds = [
-      mapCompTokenToPartyId(tokens[0], characterIdByCompToken, missingCharacterTokens),
-      mapCompTokenToPartyId(tokens[2], characterIdByCompToken, missingCharacterTokens),
-      mapCompTokenToPartyId(tokens[4], characterIdByCompToken, missingCharacterTokens),
-    ];
-    const unisonCharacterIds = [
-      mapCompTokenToPartyId(tokens[1], characterIdByCompToken, missingCharacterTokens),
-      mapCompTokenToPartyId(tokens[3], characterIdByCompToken, missingCharacterTokens),
-      mapCompTokenToPartyId(tokens[5], characterIdByCompToken, missingCharacterTokens),
-    ];
-    const equipmentIds = [
-      mapCompTokenToPartyId(tokens[6], equipmentIdByCompToken, missingEquipmentTokens),
-      mapCompTokenToPartyId(tokens[8], equipmentIdByCompToken, missingEquipmentTokens),
-      mapCompTokenToPartyId(tokens[10], equipmentIdByCompToken, missingEquipmentTokens),
-    ];
-    const soulIds = [
-      mapCompTokenToPartyId(tokens[7], equipmentIdByCompToken, missingEquipmentTokens),
-      mapCompTokenToPartyId(tokens[9], equipmentIdByCompToken, missingEquipmentTokens),
-      mapCompTokenToPartyId(tokens[11], equipmentIdByCompToken, missingEquipmentTokens),
-    ];
+    const characterIds = PARTY_LINK_SLOT_INDEXES.map((slotIndex) =>
+      mapCompTokenToPartyId(tokens[slotIndex * 2], characterIdByCompToken, missingCharacterTokens)
+    );
+    const unisonCharacterIds = PARTY_LINK_SLOT_INDEXES.map((slotIndex) =>
+      mapCompTokenToPartyId(tokens[slotIndex * 2 + 1], characterIdByCompToken, missingCharacterTokens)
+    );
+    const equipmentIds = PARTY_LINK_SLOT_INDEXES.map((slotIndex) =>
+      mapCompTokenToPartyId(tokens[6 + slotIndex * 2], equipmentIdByCompToken, missingEquipmentTokens)
+    );
+    const soulIds = PARTY_LINK_SLOT_INDEXES.map((slotIndex) =>
+      mapCompTokenToPartyId(tokens[6 + slotIndex * 2 + 1], equipmentIdByCompToken, missingEquipmentTokens)
+    );
+    const blockedCharacterIds: number[] = [];
+    const blockedEquipmentIds: number[] = [];
+    const safeCharacterIds = filterSaveLockedPartyIds(characterIds, 'character_ids', blockedCharacterIds);
+    const safeUnisonCharacterIds = filterSaveLockedPartyIds(
+      unisonCharacterIds,
+      'unison_character_ids',
+      blockedCharacterIds
+    );
+    const safeEquipmentIds = filterSaveLockedPartyIds(equipmentIds, 'equipment_ids', blockedEquipmentIds);
+    const safeSoulIds = filterSaveLockedPartyIds(soulIds, 'ability_soul_ids', blockedEquipmentIds);
 
     applySaveMutation((draft) => {
       const data = getOrCreateObject(draft, 'data');
@@ -4856,20 +5101,26 @@ function SaveEditorPageClient() {
       const group = getOrCreateObject(groups, groupId);
       const list = getOrCreateObject(group, 'list');
       const slot = getOrCreateObject(list, slotId);
-      slot.character_ids = characterIds;
-      slot.unison_character_ids = unisonCharacterIds;
-      slot.equipment_ids = equipmentIds;
-      slot.ability_soul_ids = soulIds;
+      slot.character_ids = safeCharacterIds;
+      slot.unison_character_ids = safeUnisonCharacterIds;
+      slot.equipment_ids = safeEquipmentIds;
+      slot.ability_soul_ids = safeSoulIds;
       slot.edited = true;
     });
 
     const missingCount = missingCharacterTokens.length + missingEquipmentTokens.length;
+    const blockedCount = blockedCharacterIds.length + blockedEquipmentIds.length;
+    const importNotes = [
+      missingCount > 0 ? `${missingCount} unknown token(s)` : '',
+      blockedCount > 0 ? `${blockedCount} JP-only ${blockedCount === 1 ? 'entry' : 'entries'}` : '',
+    ]
+      .filter(Boolean)
+      .join(' and ');
     setNotice({
-      type: missingCount > 0 ? 'info' : 'success',
-      message:
-        missingCount > 0
-          ? `Imported party link with ${missingCount} unknown token(s) set to blank.`
-          : 'Imported party link into this slot.',
+      type: missingCount > 0 || blockedCount > 0 ? 'info' : 'success',
+      message: importNotes
+        ? `Imported party link with ${importNotes} set to blank.`
+        : 'Imported party link into this slot.',
     });
     return true;
   };
@@ -4936,6 +5187,13 @@ function SaveEditorPageClient() {
 
   const applyPartyPickerValue = (selectedId: string | number) => {
     if (!partyPicker) return;
+    const lockReason = getPartySelectionLockReason(partyPicker.field, selectedId);
+    if (lockReason) {
+      const id = String(getNumberValue(selectedId, 0));
+      const kindLabel = partyPicker.kind === 'character' ? 'Character' : 'Equipment';
+      setNotice({ type: 'error', message: `${kindLabel} ${id} is JP-only and cannot be added to EN saves.` });
+      return;
+    }
     updatePartySlotField(
       partyPicker.groupId,
       partyPicker.slotId,
@@ -5004,6 +5262,108 @@ function SaveEditorPageClient() {
     }
   };
 
+  const getRawSaveLockMessage = (previousDoc: SaveDocument | null, nextDoc: SaveDocument): string => {
+    const blocked: string[] = [];
+    const previousData = previousDoc?.data ?? {};
+    const nextData = nextDoc.data;
+
+    const collectMap = (data: JsonObject, key: string): Record<string, unknown> =>
+      isObject(data[key]) ? (data[key] as Record<string, unknown>) : {};
+
+    const previousCharacters = collectMap(previousData, 'user_character_list');
+    const nextCharacters = collectMap(nextData, 'user_character_list');
+    for (const id of Object.keys(nextCharacters)) {
+      if (Object.prototype.hasOwnProperty.call(previousCharacters, id)) continue;
+      if (getCharacterSaveLockReason(characterMetaById[id])) blocked.push(`character ${id}`);
+    }
+
+    const previousItems = collectMap(previousData, 'item_list');
+    const nextItems = collectMap(nextData, 'item_list');
+    for (const id of Object.keys(nextItems)) {
+      if (Object.prototype.hasOwnProperty.call(previousItems, id)) continue;
+      if (getItemSaveLockReason(itemMetaById[id])) blocked.push(`item ${id}`);
+    }
+
+    const previousEquipment = collectMap(previousData, 'user_equipment_list');
+    const nextEquipment = collectMap(nextData, 'user_equipment_list');
+    for (const id of Object.keys(nextEquipment)) {
+      if (Object.prototype.hasOwnProperty.call(previousEquipment, id)) continue;
+      if (getItemSaveLockReason(itemMetaById[id])) blocked.push(`equipment ${id}`);
+    }
+
+    const collectPartyValues = (doc: SaveDocument | null) => {
+      const values = new Map<string, { field: PartyPickerField; value: number }>();
+      if (!doc) return values;
+      const groupEntriesRaw = getObjectOrArrayEntries(doc.data.user_party_group_list);
+      const hasGroupOneKey = groupEntriesRaw.some(([rawGroupId]) => getNumberValue(rawGroupId, Number.NaN) === 1);
+      for (const [rawGroupId, groupValue] of groupEntriesRaw) {
+        const parsedGroupId = getNumberValue(rawGroupId, Number.NaN);
+        const normalizedGroupId =
+          Number.isFinite(parsedGroupId) && !hasGroupOneKey && parsedGroupId >= 0 ? String(parsedGroupId + 1) : rawGroupId;
+        const groupObject = isObject(groupValue) ? groupValue : null;
+        const listValue = groupObject?.list ?? groupValue;
+        const slotEntriesRaw = getObjectOrArrayEntries(listValue);
+        const hasSlotOneKey = slotEntriesRaw.some(([rawSlotId]) => getNumberValue(rawSlotId, Number.NaN) === 1);
+
+        for (const [rawSlotId, slotValue] of slotEntriesRaw) {
+          if (!isObject(slotValue)) continue;
+          const parsedSlotId = getNumberValue(rawSlotId, Number.NaN);
+          const normalizedSlotId =
+            Number.isFinite(parsedSlotId) && !hasSlotOneKey && parsedSlotId >= 0 ? String(parsedSlotId + 1) : rawSlotId;
+
+          (['character_ids', 'unison_character_ids', 'equipment_ids', 'ability_soul_ids'] as PartyPickerField[]).forEach(
+            (field) => {
+              const fieldValues = Array.isArray(slotValue[field]) ? (slotValue[field] as unknown[]) : [];
+              for (let index = 0; index < 3; index += 1) {
+                values.set(`${normalizedGroupId}|${normalizedSlotId}|${field}|${index}`, {
+                  field,
+                  value: getNumberValue(fieldValues[index], 0),
+                });
+              }
+            }
+          );
+        }
+      }
+      return values;
+    };
+
+    const previousPartyValues = collectPartyValues(previousDoc);
+    const nextPartyValues = collectPartyValues(nextDoc);
+    for (const [path, entry] of nextPartyValues) {
+      if (entry.value <= 0) continue;
+      if (previousPartyValues.get(path)?.value === entry.value) continue;
+      if (getPartySelectionLockReason(entry.field, entry.value)) {
+        blocked.push(`${entry.field.includes('character') ? 'party character' : 'party equipment'} ${entry.value}`);
+      }
+    }
+
+    const collectStoryValues = (doc: SaveDocument | null) => {
+      const values = new Map<string, string>();
+      if (!doc || !isObject(doc.data.quest_progress)) return values;
+      for (const [chapterId, chapterValue] of Object.entries(doc.data.quest_progress)) {
+        if (!Array.isArray(chapterValue)) continue;
+        chapterValue.forEach((entry, index) => {
+          if (!isObject(entry)) return;
+          const questId = getStringValue(entry.quest_id);
+          if (questId) values.set(`${chapterId}|${index}`, questId);
+        });
+      }
+      return values;
+    };
+
+    const previousStoryValues = collectStoryValues(previousDoc);
+    const nextStoryValues = collectStoryValues(nextDoc);
+    for (const [path, questId] of nextStoryValues) {
+      if (previousStoryValues.get(path) === questId) continue;
+      if (getStorySaveLockReason(storyQuestMetaFallbackByQuestId[questId])) blocked.push(`story quest ${questId}`);
+    }
+
+    if (blocked.length === 0) return '';
+    const preview = blocked.slice(0, 6).join(', ');
+    const suffix = blocked.length > 6 ? `, and ${blocked.length - 6} more` : '';
+    return `Raw JSON includes new JP-only save data (${preview}${suffix}). Keep JP-only data unchanged or remove it before applying.`;
+  };
+
   const applyRawJson = () => {
     if (!rawParsedState.isValid) {
       setNotice({ type: 'error', message: rawParsedState.error ?? 'Raw JSON is invalid.' });
@@ -5013,6 +5373,12 @@ function SaveEditorPageClient() {
     const normalized = normalizeSaveInput(rawParsedState.parsed);
     if (!normalized.ok) {
       setNotice({ type: 'error', message: normalized.error });
+      return;
+    }
+
+    const lockMessage = getRawSaveLockMessage(saveDocument, normalized.value);
+    if (lockMessage) {
+      setNotice({ type: 'error', message: lockMessage });
       return;
     }
 
@@ -5149,29 +5515,33 @@ function SaveEditorPageClient() {
                 {loadingTemplate === 'mostly_complete' ? <Loader2 className='mr-2 h-4 w-4 animate-spin' /> : null}
                 Start Mostly Complete
               </Button>
-              <div className='flex min-w-[250px] flex-wrap items-center gap-2'>
-                <Input
-                  value={sharedImportInput}
-                  onChange={(event) => setSharedImportInput(event.target.value)}
-                  placeholder='Shared slug or link'
-                  className='h-9 min-w-[220px] flex-1'
-                />
-                <Button
-                  variant='outline'
-                  onClick={() => void importSharedSave(sharedImportInput)}
-                  disabled={sharedImportLoading}
-                >
-                  {sharedImportLoading ? (
-                    <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                  ) : (
-                    <Link2 className='mr-2 h-4 w-4' />
-                  )}
-                  Import Shared
-                </Button>
-              </div>
-              <Link href='/saves'>
-                <Button variant='outline'>Saves</Button>
-              </Link>
+              {COMMUNITY_FEATURES_ENABLED ? (
+                <>
+                  <div className='flex min-w-[250px] flex-wrap items-center gap-2'>
+                    <Input
+                      value={sharedImportInput}
+                      onChange={(event) => setSharedImportInput(event.target.value)}
+                      placeholder='Shared slug or link'
+                      className='h-9 min-w-[220px] flex-1'
+                    />
+                    <Button
+                      variant='outline'
+                      onClick={() => void importSharedSave(sharedImportInput)}
+                      disabled={sharedImportLoading}
+                    >
+                      {sharedImportLoading ? (
+                        <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                      ) : (
+                        <Link2 className='mr-2 h-4 w-4' />
+                      )}
+                      Import Shared
+                    </Button>
+                  </div>
+                  <Link href='/saves'>
+                    <Button variant='outline'>Saves</Button>
+                  </Link>
+                </>
+              ) : null}
               <Button variant='secondary' onClick={downloadSave} disabled={!saveDocument} className='gap-2'>
                 <Download className='h-4 w-4' />
                 Download
@@ -5352,7 +5722,7 @@ function SaveEditorPageClient() {
                   className='w-[160px]'
                   disabled={!saveDocument}
                 />
-                <Button onClick={addCharacter} className='gap-2' disabled={!saveDocument}>
+                <Button onClick={addCharacter} className='gap-2' disabled={!saveDocument || Boolean(newCharacterSaveLockReason)}>
                   <Plus className='h-4 w-4' />
                   Add
                 </Button>
@@ -5390,6 +5760,9 @@ function SaveEditorPageClient() {
                   </SelectContent>
                 </Select>
               </div>
+              {newCharacterSaveLockReason && (
+                <p className='text-xs text-amber-500'>{newCharacterSaveLockReason}</p>
+              )}
 
               <div className='grid grid-cols-[repeat(auto-fill,minmax(58px,1fr))] gap-1'>
                 {visibleCharacters.map((id) => {
@@ -5397,6 +5770,7 @@ function SaveEditorPageClient() {
                   const meta = characterMetaById[id];
                   const displayName = meta?.nameEN || meta?.nameJP || meta?.faceCode || `Character ${id}`;
                   const thumbUrls = meta ? buildCharacterThumbUrls(meta.faceCode) : [];
+                  const saveLockReason = getCharacterSaveLockReason(meta);
                   const tone = characterBorderToneById[id] ?? 'default';
                   const ownedClass =
                     tone === 'gold'
@@ -5413,12 +5787,17 @@ function SaveEditorPageClient() {
                       type='button'
                       onClick={() => openCharacterEditor(id)}
                       onContextMenu={(event) => openCharacterContextMenu(event, id)}
-                      className={`group flex flex-col items-center rounded-md border p-0.5 text-center transition ${
+                      className={`group relative flex flex-col items-center rounded-md border p-0.5 text-center transition ${
                         owned ? ownedClass : 'border-border/50 bg-muted/20 opacity-45 grayscale hover:opacity-80 hover:grayscale-0'
                       }`}
                       disabled={!saveDocument}
-                      title={`ID ${id}`}
+                      title={saveLockReason ? `ID ${id} - JP-only, cannot be added to EN saves` : `ID ${id}`}
                     >
+                      {saveLockReason && (
+                        <span className='absolute right-0.5 top-0.5 rounded bg-amber-500/90 px-1 py-0.5 text-[8px] font-semibold leading-none text-black'>
+                          JP
+                        </span>
+                      )}
                       <AssetThumb urls={thumbUrls} alt={displayName} size={52} pixelated={false} />
                       <p className='mt-0.5 w-full truncate text-[9px] text-muted-foreground'>{displayName}</p>
                     </button>
@@ -5440,7 +5819,14 @@ function SaveEditorPageClient() {
                   onContextMenu={(event) => event.preventDefault()}
                 >
                   <div className='px-2 py-1.5'>
-                    <p className='truncate text-xs font-semibold'>{characterContextMenuEntry.name}</p>
+                    <div className='flex items-center gap-2'>
+                      <p className='min-w-0 flex-1 truncate text-xs font-semibold'>{characterContextMenuEntry.name}</p>
+                      {characterContextMenuEntry.saveLockReason && (
+                        <Badge variant='outline' className='border-amber-400/70 text-[10px] text-amber-300'>
+                          JP only
+                        </Badge>
+                      )}
+                    </div>
                     <p className='font-mono text-[10px] text-muted-foreground'>
                       ID {characterContextMenuEntry.id} | {getCharacterToneLabel(characterContextMenuEntry.tone)} | Lv{' '}
                       {characterContextMenuEntry.levelStop}
@@ -5475,11 +5861,13 @@ function SaveEditorPageClient() {
                       type='button'
                       className='w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent'
                       onClick={() => {
-                        addCharacterById(characterContextMenuEntry.id);
-                        setNotice({ type: 'success', message: `Character ${characterContextMenuEntry.id} added.` });
-                        closeCharacterContextMenu();
+                        const added = addCharacterById(characterContextMenuEntry.id);
+                        if (added) {
+                          setNotice({ type: 'success', message: `Character ${characterContextMenuEntry.id} added.` });
+                          closeCharacterContextMenu();
+                        }
                       }}
-                      disabled={!saveDocument}
+                      disabled={!saveDocument || Boolean(characterContextMenuEntry.saveLockReason)}
                     >
                       Add To Save
                     </button>
@@ -5721,6 +6109,11 @@ function SaveEditorPageClient() {
                                 <Badge variant={selectedCharacter ? 'default' : 'secondary'}>
                                   {selectedCharacter ? 'Owned' : 'Unowned'}
                                 </Badge>
+                                {selectedCharacterSaveLockReason && (
+                                  <Badge variant='outline' className='border-amber-400/70 text-amber-300'>
+                                    JP only
+                                  </Badge>
+                                )}
                                 <Badge variant='outline'>B1 {selectedCharacterBoardMeta.board1Nodes} nodes</Badge>
                                 <Badge variant='outline'>
                                   {selectedCharacterBoardMeta.hasBoard2
@@ -5731,6 +6124,9 @@ function SaveEditorPageClient() {
                               <p className='text-xs text-muted-foreground'>
                                 Face code: {characterMetaById[selectedCharacterId]?.faceCode || 'Unknown'}
                               </p>
+                              {selectedCharacterSaveLockReason && !selectedCharacter && (
+                                <p className='text-xs text-amber-500'>{selectedCharacterSaveLockReason}</p>
+                              )}
                               <p className='text-xs text-muted-foreground'>
                                 Node level gates: MB1 80 | MB2 T4 {selectedCharacterTierRequirements[4] || 0} | MB2 T5+{' '}
                                 {Math.max(selectedCharacterTierRequirements[5] || 0, selectedCharacterTierRequirements[6] || 0)}
@@ -5758,11 +6154,13 @@ function SaveEditorPageClient() {
                               {!selectedCharacter && (
                                 <Button
                                   onClick={() => {
-                                    addCharacterById(selectedCharacterId);
-                                    setCharacterNodeDraft(getCharacterNodeString(selectedCharacterId));
-                                    setNotice({ type: 'success', message: `Character ${selectedCharacterId} added.` });
+                                    const added = addCharacterById(selectedCharacterId);
+                                    if (added) {
+                                      setCharacterNodeDraft(getCharacterNodeString(selectedCharacterId));
+                                      setNotice({ type: 'success', message: `Character ${selectedCharacterId} added.` });
+                                    }
                                   }}
-                                  disabled={!saveDocument}
+                                  disabled={!saveDocument || Boolean(selectedCharacterSaveLockReason)}
                                 >
                                   Add To Save
                                 </Button>
@@ -6330,7 +6728,7 @@ function SaveEditorPageClient() {
                   <Input
                     value={itemSearch}
                     onChange={(event) => setItemSearch(event.target.value)}
-                    placeholder='Search item ID or name...'
+                    placeholder='Search item ID, name, category, or region...'
                     className='pl-9'
                     disabled={!saveDocument}
                   />
@@ -6349,7 +6747,7 @@ function SaveEditorPageClient() {
                   className='w-[120px]'
                   disabled={!saveDocument}
                 />
-                <Button onClick={addItem} className='gap-2' disabled={!saveDocument}>
+                <Button onClick={addItem} className='gap-2' disabled={!saveDocument || Boolean(newItemSaveLockReason)}>
                   <Plus className='h-4 w-4' />
                   Set
                 </Button>
@@ -6387,7 +6785,44 @@ function SaveEditorPageClient() {
                     </button>
                   ))}
                 </div>
+                <Select value={itemCategoryFilter} onValueChange={setItemCategoryFilter} disabled={!saveDocument}>
+                  <SelectTrigger className='w-[190px]'>
+                    <SelectValue placeholder='Category' />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='all'>Category: All</SelectItem>
+                    {itemCategoryOptions.map((entry) => (
+                      <SelectItem key={entry.category} value={entry.category}>
+                        {entry.category} ({entry.count})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className='flex items-center gap-1 rounded-md border bg-muted/20 p-1'>
+                  {([
+                    { key: 'all', label: 'All Regions', dot: 'bg-muted-foreground' },
+                    { key: 'global', label: 'GL', dot: 'bg-sky-400' },
+                    { key: 'jp_only', label: 'JP Only', dot: 'bg-amber-400' },
+                    { key: 'uncategorized', label: 'Unknown', dot: 'bg-slate-400' },
+                  ] as Array<{ key: ItemRegionFilter; label: string; dot: string }>).map((option) => (
+                    <button
+                      key={option.key}
+                      type='button'
+                      className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition ${
+                        itemRegionFilter === option.key
+                          ? 'bg-background font-semibold text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                      onClick={() => setItemRegionFilter(option.key)}
+                      disabled={!saveDocument}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${option.dot}`} />
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
+              {newItemSaveLockReason && <p className='text-xs text-amber-500'>{newItemSaveLockReason}</p>}
 
               <div className='grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12'>
                 {visibleItemIds.map((id) => {
@@ -6396,6 +6831,9 @@ function SaveEditorPageClient() {
                   const meta = itemMetaById[id];
                   const displayName = meta?.name || `Item ${id}`;
                   const thumbUrls = [toCdnUrl(meta?.thumbnail || ''), toCdnUrl(meta?.icon || '')].filter(Boolean);
+                  const saveLockReason = getItemSaveLockReason(meta);
+                  const category = meta?.category || 'Other';
+                  const regionLabel = getItemRegionLabel(meta);
 
                   return (
                     <button
@@ -6409,8 +6847,13 @@ function SaveEditorPageClient() {
                           : 'border-border/50 bg-muted/20 opacity-45 grayscale hover:opacity-80 hover:grayscale-0'
                       }`}
                       disabled={!saveDocument}
-                      title={`ID ${id}`}
+                      title={`${displayName} | ${category} | ${regionLabel}${saveLockReason ? ' - JP-only, cannot be added to EN saves' : ''}`}
                     >
+                      {saveLockReason && (
+                        <span className='absolute left-1 top-1 rounded bg-amber-500/90 px-1 py-0.5 text-[8px] font-semibold leading-none text-black'>
+                          JP
+                        </span>
+                      )}
                       {owned && (
                         <span className='absolute right-1 top-1 inline-flex min-w-[44px] items-center justify-end rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-mono font-semibold leading-none tabular-nums text-foreground shadow-sm'>
                           x{quantity}
@@ -6422,6 +6865,7 @@ function SaveEditorPageClient() {
                           <p className='truncate text-[10px] font-medium leading-none tracking-tight text-foreground/90'>
                             {displayName}
                           </p>
+                          <p className='mt-0.5 truncate text-[8px] leading-none text-muted-foreground'>{category}</p>
                         </div>
                       </div>
                     </button>
@@ -6443,49 +6887,62 @@ function SaveEditorPageClient() {
                   onContextMenu={(event) => event.preventDefault()}
                 >
                   <div className='px-2 py-1.5'>
-                    <p className='truncate text-xs font-semibold'>{itemContextMenuEntry.name}</p>
+                    <div className='flex items-center gap-2'>
+                      <p className='min-w-0 flex-1 truncate text-xs font-semibold'>{itemContextMenuEntry.name}</p>
+                      {itemContextMenuEntry.saveLockReason && (
+                        <Badge variant='outline' className='border-amber-400/70 text-[10px] text-amber-300'>
+                          JP only
+                        </Badge>
+                      )}
+                    </div>
                     <p className='font-mono text-[10px] text-muted-foreground'>
                       ID {itemContextMenuEntry.id}{' '}
-                      {itemContextMenuEntry.owned ? `| x${itemContextMenuEntry.quantity}` : '| Unowned'}
+                      {itemContextMenuEntry.owned ? `| x${itemContextMenuEntry.quantity}` : '| Unowned'} |{' '}
+                      {itemContextMenuEntry.category} | {itemContextMenuEntry.regionLabel}
                     </p>
                   </div>
                   <div className='my-1 h-px bg-border' />
                   <button
                     type='button'
-                    className='w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent'
+                    className='w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent disabled:opacity-50'
                     onClick={() => applyItemContextDelta(itemContextMenuEntry.id, 1)}
+                    disabled={!itemContextMenuEntry.owned && Boolean(itemContextMenuEntry.saveLockReason)}
                   >
                     +1
                   </button>
                   <button
                     type='button'
-                    className='w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent'
+                    className='w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent disabled:opacity-50'
                     onClick={() => applyItemContextDelta(itemContextMenuEntry.id, -1)}
+                    disabled={!itemContextMenuEntry.owned && Boolean(itemContextMenuEntry.saveLockReason)}
                   >
                     -1
                   </button>
                   <button
                     type='button'
-                    className='w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent'
+                    className='w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent disabled:opacity-50'
                     onClick={() => applyItemContextQuantity(itemContextMenuEntry.id, 0, `Item ${itemContextMenuEntry.id} set to 0.`)}
+                    disabled={!itemContextMenuEntry.owned && Boolean(itemContextMenuEntry.saveLockReason)}
                   >
                     Set 0
                   </button>
                   <button
                     type='button'
-                    className='w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent'
+                    className='w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent disabled:opacity-50'
                     onClick={() =>
                       applyItemContextQuantity(itemContextMenuEntry.id, 99, `Item ${itemContextMenuEntry.id} set to 99.`)
                     }
+                    disabled={!itemContextMenuEntry.owned && Boolean(itemContextMenuEntry.saveLockReason)}
                   >
                     Set 99
                   </button>
                   <button
                     type='button'
-                    className='w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent'
+                    className='w-full rounded px-2 py-1.5 text-left text-xs hover:bg-accent disabled:opacity-50'
                     onClick={() =>
                       applyItemContextQuantity(itemContextMenuEntry.id, 9999, `Item ${itemContextMenuEntry.id} set to 9999.`)
                     }
+                    disabled={!itemContextMenuEntry.owned && Boolean(itemContextMenuEntry.saveLockReason)}
                   >
                     Set 9999
                   </button>
@@ -6560,11 +7017,24 @@ function SaveEditorPageClient() {
                                 <Badge variant={selectedItemOwned ? 'default' : 'secondary'}>
                                   {selectedItemOwned ? 'Owned' : 'Unowned'}
                                 </Badge>
+                                {selectedItemSaveLockReason && (
+                                  <Badge variant='outline' className='border-amber-400/70 text-amber-300'>
+                                    JP only
+                                  </Badge>
+                                )}
                                 <Badge variant='outline'>{selectedItemMeta?.type ?? 'item'}</Badge>
+                                <Badge variant='outline'>{selectedItemMeta?.category || 'Other'}</Badge>
+                                <Badge variant='outline'>{getItemRegionLabel(selectedItemMeta)}</Badge>
+                                {getNumberValue(selectedItemMeta?.rarity, 0) > 0 && (
+                                  <Badge variant='outline'>R{selectedItemMeta?.rarity}</Badge>
+                                )}
                               </div>
                               <p className='text-xs text-muted-foreground'>
                                 Set quantity directly or use presets below.
                               </p>
+                              {selectedItemSaveLockReason && !selectedItemOwned && (
+                                <p className='text-xs text-amber-500'>{selectedItemSaveLockReason}</p>
+                              )}
                             </div>
                           </div>
                           <div className='flex flex-wrap gap-2'>
@@ -6572,10 +7042,12 @@ function SaveEditorPageClient() {
                               <Button
                                 size='sm'
                                 onClick={() => {
-                                  handleItemQuantityChange(selectedItemId, '1');
-                                  setNotice({ type: 'success', message: `Item ${selectedItemId} added with quantity 1.` });
+                                  const added = handleItemQuantityChange(selectedItemId, '1');
+                                  if (added) {
+                                    setNotice({ type: 'success', message: `Item ${selectedItemId} added with quantity 1.` });
+                                  }
                                 }}
-                                disabled={!saveDocument}
+                                disabled={!saveDocument || Boolean(selectedItemSaveLockReason)}
                               >
                                 Add To Save
                               </Button>
@@ -6605,7 +7077,7 @@ function SaveEditorPageClient() {
                           type='number'
                           value={String(selectedItemQuantity)}
                           onChange={(event) => handleItemQuantityChange(selectedItemId, event.target.value)}
-                          disabled={!saveDocument}
+                          disabled={!saveDocument || (!selectedItemOwned && Boolean(selectedItemSaveLockReason))}
                         />
                         <div className='mt-2 grid grid-cols-5 gap-2'>
                           {([0, 1, 99, 999, 9999] as number[]).map((qty) => {
@@ -6620,7 +7092,7 @@ function SaveEditorPageClient() {
                                     : 'border-border bg-background hover:bg-accent'
                                 }`}
                                 onClick={() => handleItemQuantityChange(selectedItemId, String(qty))}
-                                disabled={!saveDocument}
+                                disabled={!saveDocument || (!selectedItemOwned && Boolean(selectedItemSaveLockReason))}
                               >
                                 {qty}
                               </button>
@@ -6634,7 +7106,7 @@ function SaveEditorPageClient() {
                             onClick={() =>
                               handleItemQuantityChange(selectedItemId, String(Math.max(0, selectedItemQuantity - 1)))
                             }
-                            disabled={!saveDocument}
+                            disabled={!saveDocument || (!selectedItemOwned && Boolean(selectedItemSaveLockReason))}
                           >
                             -1
                           </Button>
@@ -6642,7 +7114,7 @@ function SaveEditorPageClient() {
                             size='sm'
                             variant='outline'
                             onClick={() => handleItemQuantityChange(selectedItemId, String(selectedItemQuantity + 1))}
-                            disabled={!saveDocument}
+                            disabled={!saveDocument || (!selectedItemOwned && Boolean(selectedItemSaveLockReason))}
                           >
                             +1
                           </Button>
@@ -6683,7 +7155,7 @@ function SaveEditorPageClient() {
                   className='w-[160px]'
                   disabled={!saveDocument}
                 />
-                <Button onClick={addEquipment} className='gap-2' disabled={!saveDocument}>
+                <Button onClick={addEquipment} className='gap-2' disabled={!saveDocument || Boolean(newEquipmentSaveLockReason)}>
                   <Plus className='h-4 w-4' />
                   Add
                 </Button>
@@ -6772,6 +7244,7 @@ function SaveEditorPageClient() {
                   ))}
                 </div>
               </div>
+              {newEquipmentSaveLockReason && <p className='text-xs text-amber-500'>{newEquipmentSaveLockReason}</p>}
 
               <div className='grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12'>
                 {visibleEquipmentIds.map((id) => {
@@ -6780,6 +7253,7 @@ function SaveEditorPageClient() {
                   const meta = itemMetaById[id];
                   const displayName = meta?.name || `Equipment ${id}`;
                   const thumbUrls = [toCdnUrl(meta?.thumbnail || ''), toCdnUrl(meta?.icon || '')].filter(Boolean);
+                  const saveLockReason = getItemSaveLockReason(meta);
                   const levelPoint = equipment
                     ? getEquipmentLevelPointFromSaveLevel(getNumberValue(equipment.level, EQUIPMENT_SAVE_LEVEL_MIN))
                     : 0;
@@ -6801,12 +7275,17 @@ function SaveEditorPageClient() {
                       type='button'
                       onClick={() => openEquipmentEditor(id)}
                       onContextMenu={(event) => openEquipmentContextMenu(event, id)}
-                      className={`group flex flex-col items-center rounded-md border p-1 text-center transition ${
+                      className={`group relative flex flex-col items-center rounded-md border p-1 text-center transition ${
                         owned ? ownedClass : 'border-border/50 bg-muted/20 opacity-45 grayscale hover:opacity-80 hover:grayscale-0'
                       }`}
                       disabled={!saveDocument}
-                      title={`ID ${id}`}
+                      title={saveLockReason ? `ID ${id} - JP-only, cannot be added to EN saves` : `ID ${id}`}
                     >
+                      {saveLockReason && (
+                        <span className='absolute right-1 top-1 rounded bg-amber-500/90 px-1 py-0.5 text-[8px] font-semibold leading-none text-black'>
+                          JP
+                        </span>
+                      )}
                       <AssetThumb urls={thumbUrls} alt={displayName} size={68} pixelated />
                       <p className='mt-1 w-full truncate text-[10px] text-muted-foreground'>{displayName}</p>
                       {equipment && (
@@ -6834,7 +7313,14 @@ function SaveEditorPageClient() {
                   onContextMenu={(event) => event.preventDefault()}
                 >
                   <div className='px-2 py-1.5'>
-                    <p className='truncate text-xs font-semibold'>{equipmentContextMenuEntry.name}</p>
+                    <div className='flex items-center gap-2'>
+                      <p className='min-w-0 flex-1 truncate text-xs font-semibold'>{equipmentContextMenuEntry.name}</p>
+                      {equipmentContextMenuEntry.saveLockReason && (
+                        <Badge variant='outline' className='border-amber-400/70 text-[10px] text-amber-300'>
+                          JP only
+                        </Badge>
+                      )}
+                    </div>
                     <p className='font-mono text-[10px] text-muted-foreground'>
                       ID {equipmentContextMenuEntry.id} |{' '}
                       {equipmentContextMenuEntry.owned
@@ -6871,7 +7357,7 @@ function SaveEditorPageClient() {
                         }
                         closeEquipmentContextMenu();
                       }}
-                      disabled={!saveDocument}
+                      disabled={!saveDocument || Boolean(equipmentContextMenuEntry.saveLockReason)}
                     >
                       Add To Save
                     </button>
@@ -6902,25 +7388,25 @@ function SaveEditorPageClient() {
                     <div className='mt-1 grid grid-cols-3 gap-1'>
                       <button
                         type='button'
-                        className='rounded border px-1 py-1 text-[11px] hover:bg-accent'
+                        className='rounded border px-1 py-1 text-[11px] hover:bg-accent disabled:opacity-50'
                         onClick={() => applyEquipmentContextPreset(equipmentContextMenuEntry.id, 'min')}
-                        disabled={!saveDocument}
+                        disabled={!saveDocument || (!equipmentContextMenuEntry.owned && Boolean(equipmentContextMenuEntry.saveLockReason))}
                       >
                         Min
                       </button>
                       <button
                         type='button'
-                        className='rounded border px-1 py-1 text-[11px] hover:bg-accent'
+                        className='rounded border px-1 py-1 text-[11px] hover:bg-accent disabled:opacity-50'
                         onClick={() => applyEquipmentContextPreset(equipmentContextMenuEntry.id, 'max')}
-                        disabled={!saveDocument}
+                        disabled={!saveDocument || (!equipmentContextMenuEntry.owned && Boolean(equipmentContextMenuEntry.saveLockReason))}
                       >
                         Max
                       </button>
                       <button
                         type='button'
-                        className='rounded border px-1 py-1 text-[11px] hover:bg-accent'
+                        className='rounded border px-1 py-1 text-[11px] hover:bg-accent disabled:opacity-50'
                         onClick={() => applyEquipmentContextPreset(equipmentContextMenuEntry.id, 'max_lock')}
-                        disabled={!saveDocument}
+                        disabled={!saveDocument || (!equipmentContextMenuEntry.owned && Boolean(equipmentContextMenuEntry.saveLockReason))}
                       >
                         Max+Lock
                       </button>
@@ -6942,7 +7428,7 @@ function SaveEditorPageClient() {
                                 : 'border-border bg-background/70 text-muted-foreground hover:bg-accent'
                             }`}
                             onClick={() => applyEquipmentContextLevelPoint(equipmentContextMenuEntry.id, levelPoint)}
-                            disabled={!saveDocument}
+                            disabled={!saveDocument || (!equipmentContextMenuEntry.owned && Boolean(equipmentContextMenuEntry.saveLockReason))}
                           >
                             {levelPoint}
                           </button>
@@ -6967,7 +7453,7 @@ function SaveEditorPageClient() {
                                   : 'border-border bg-background/70 text-muted-foreground hover:bg-accent'
                               }`}
                               onClick={() => applyEquipmentContextEnhancement(equipmentContextMenuEntry.id, status)}
-                              disabled={!saveDocument}
+                              disabled={!saveDocument || (!equipmentContextMenuEntry.owned && Boolean(equipmentContextMenuEntry.saveLockReason))}
                             >
                               {status === 0 ? 'B' : status}
                             </button>
@@ -6988,7 +7474,7 @@ function SaveEditorPageClient() {
                           : 'border-border bg-background/70 text-muted-foreground hover:bg-accent'
                       }`}
                       onClick={() => applyEquipmentContextProtection(equipmentContextMenuEntry.id, true)}
-                      disabled={!saveDocument}
+                      disabled={!saveDocument || (!equipmentContextMenuEntry.owned && Boolean(equipmentContextMenuEntry.saveLockReason))}
                     >
                       Lock
                     </button>
@@ -7000,7 +7486,7 @@ function SaveEditorPageClient() {
                           : 'border-border bg-background/70 text-muted-foreground hover:bg-accent'
                       }`}
                       onClick={() => applyEquipmentContextProtection(equipmentContextMenuEntry.id, false)}
-                      disabled={!saveDocument}
+                      disabled={!saveDocument || (!equipmentContextMenuEntry.owned && Boolean(equipmentContextMenuEntry.saveLockReason))}
                     >
                       Unlock
                     </button>
@@ -7118,6 +7604,11 @@ function SaveEditorPageClient() {
                                   <Badge variant={selectedEquipment ? 'default' : 'secondary'}>
                                     {selectedEquipment ? 'Owned' : 'Unowned'}
                                   </Badge>
+                                  {selectedEquipmentSaveLockReason && (
+                                    <Badge variant='outline' className='border-amber-400/70 text-amber-300'>
+                                      JP only
+                                    </Badge>
+                                  )}
                                   <Badge variant='outline'>
                                     Tone {equipmentBorderToneById[selectedEquipmentId] ?? 'default'}
                                   </Badge>
@@ -7125,6 +7616,9 @@ function SaveEditorPageClient() {
                                 <p className='text-xs text-muted-foreground'>
                                   Click presets for quick setup, or fine-tune with sliders below.
                                 </p>
+                                {selectedEquipmentSaveLockReason && !selectedEquipment && (
+                                  <p className='text-xs text-amber-500'>{selectedEquipmentSaveLockReason}</p>
+                                )}
                               </div>
                             </div>
                             <div className='flex flex-wrap gap-2'>
@@ -7137,7 +7631,7 @@ function SaveEditorPageClient() {
                                       setNotice({ type: 'success', message: `Equipment ${selectedEquipmentId} added.` });
                                     }
                                   }}
-                                  disabled={!saveDocument}
+                                  disabled={!saveDocument || Boolean(selectedEquipmentSaveLockReason)}
                                 >
                                   Add To Save
                                 </Button>
@@ -7148,7 +7642,7 @@ function SaveEditorPageClient() {
                                     size='sm'
                                     variant='secondary'
                                     onClick={() => applyEquipmentPreset(selectedEquipmentId, 'min')}
-                                    disabled={!saveDocument}
+                                    disabled={!saveDocument || (!selectedEquipment && Boolean(selectedEquipmentSaveLockReason))}
                                   >
                                     Min
                                   </Button>
@@ -7156,7 +7650,7 @@ function SaveEditorPageClient() {
                                     size='sm'
                                     variant='secondary'
                                     onClick={() => applyEquipmentPreset(selectedEquipmentId, 'max')}
-                                    disabled={!saveDocument}
+                                    disabled={!saveDocument || (!selectedEquipment && Boolean(selectedEquipmentSaveLockReason))}
                                   >
                                     Max
                                   </Button>
@@ -7164,7 +7658,7 @@ function SaveEditorPageClient() {
                                     size='sm'
                                     variant='secondary'
                                     onClick={() => applyEquipmentPreset(selectedEquipmentId, 'max_lock')}
-                                    disabled={!saveDocument}
+                                    disabled={!saveDocument || (!selectedEquipment && Boolean(selectedEquipmentSaveLockReason))}
                                   >
                                     Max + Lock
                                   </Button>
@@ -7442,7 +7936,7 @@ function SaveEditorPageClient() {
                   }
                 }}
               >
-                <DialogContent className='max-h-[92vh] overflow-y-auto sm:max-w-3xl'>
+                <DialogContent className='max-h-[92vh] overflow-y-auto sm:max-w-[820px]'>
                   {partyEditor && selectedPartyEntry ? (
                     <>
                       <DialogHeader>
@@ -7470,7 +7964,7 @@ function SaveEditorPageClient() {
                           />
                         </div>
 
-                        <div className='grid gap-2 sm:grid-cols-3'>
+                        <div className='grid gap-3 md:grid-cols-3'>
                           {[0, 1, 2].map((slotIndex) => {
                             const characterId = getArrayNumberAt(selectedPartyEntry.value.character_ids, slotIndex);
                             const unisonId = getArrayNumberAt(selectedPartyEntry.value.unison_character_ids, slotIndex);
@@ -7510,33 +8004,34 @@ function SaveEditorPageClient() {
                               thumbUrls: string[];
                               pixelated: boolean;
                               pickerTitle: string;
+                              tileClassName: string;
+                              thumbSize: number;
+                              saveLockReason: string;
                             }> = [
                               {
                                 key: 'character_ids',
                                 kind: 'character',
-                                label: 'Main',
+                                label: slotIndex === 0 ? 'Leader' : 'Main',
                                 name: characterName,
                                 thumbUrls: characterThumbUrls,
                                 pixelated: false,
                                 pickerTitle: `Pick Main Unit - Group ${selectedPartyEntry.groupId} Slot ${selectedPartyEntry.slotId} #${slotIndex + 1}`,
-                              },
-                              {
-                                key: 'unison_character_ids',
-                                kind: 'character',
-                                label: 'Unison',
-                                name: unisonName,
-                                thumbUrls: unisonThumbUrls,
-                                pixelated: false,
-                                pickerTitle: `Pick Unison - Group ${selectedPartyEntry.groupId} Slot ${selectedPartyEntry.slotId} #${slotIndex + 1}`,
+                                tileClassName:
+                                  'col-start-1 row-start-1 h-[88px] w-[88px] justify-self-start self-start',
+                                thumbSize: 64,
+                                saveLockReason: getCharacterSaveLockReason(characterMeta),
                               },
                               {
                                 key: 'equipment_ids',
                                 kind: 'equipment',
-                                label: 'Equipment',
+                                label: 'Weapon',
                                 name: equipmentName,
                                 thumbUrls: equipmentThumbUrls,
                                 pixelated: true,
                                 pickerTitle: `Pick Equipment - Group ${selectedPartyEntry.groupId} Slot ${selectedPartyEntry.slotId} #${slotIndex + 1}`,
+                                tileClassName: 'col-start-2 row-start-1 h-[66px] w-[66px] justify-self-end self-start',
+                                thumbSize: 42,
+                                saveLockReason: getItemSaveLockReason(equipmentMeta),
                               },
                               {
                                 key: 'ability_soul_ids',
@@ -7546,35 +8041,64 @@ function SaveEditorPageClient() {
                                 thumbUrls: soulThumbUrls,
                                 pixelated: true,
                                 pickerTitle: `Pick Soul - Group ${selectedPartyEntry.groupId} Slot ${selectedPartyEntry.slotId} #${slotIndex + 1}`,
+                                tileClassName:
+                                  'col-start-1 row-start-2 h-[66px] w-[66px] justify-self-start self-end',
+                                thumbSize: 42,
+                                saveLockReason: getItemSaveLockReason(soulMeta),
+                              },
+                              {
+                                key: 'unison_character_ids',
+                                kind: 'character',
+                                label: 'Sub',
+                                name: unisonName,
+                                thumbUrls: unisonThumbUrls,
+                                pixelated: false,
+                                pickerTitle: `Pick Unison - Group ${selectedPartyEntry.groupId} Slot ${selectedPartyEntry.slotId} #${slotIndex + 1}`,
+                                tileClassName: 'col-start-2 row-start-2 h-[88px] w-[88px] justify-self-end self-end',
+                                thumbSize: 64,
+                                saveLockReason: getCharacterSaveLockReason(unisonMeta),
                               },
                             ];
 
                             return (
-                              <div key={slotIndex} className='rounded-lg border border-border/70 bg-background/60 p-2'>
-                                <p className='mb-2 text-[10px] uppercase text-muted-foreground'>Slot {slotIndex + 1}</p>
-                                <div className='space-y-1.5'>
+                              <div key={slotIndex} className='rounded-md border border-border/70 bg-background/60 p-2'>
+                                <p className='mb-2 text-[10px] uppercase tracking-wide text-muted-foreground'>
+                                  Slot {slotIndex + 1}
+                                </p>
+                                <div className='mx-auto grid w-[192px] grid-cols-[92px_76px] grid-rows-[76px_76px] gap-2 rounded-[4px] border border-zinc-300 bg-zinc-200 p-2 shadow-inner'>
                                   {slotFields.map((field) => (
-                                    <div key={field.key} className='space-y-1'>
-                                      <p className='text-[10px] uppercase text-muted-foreground'>{field.label}</p>
-                                      <button
-                                        type='button'
-                                        className='flex w-full items-center justify-center rounded-md border border-border/60 bg-background/85 p-1.5 text-left transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60'
-                                        onClick={() =>
-                                          openPartyPicker(
-                                            selectedPartyEntry.groupId,
-                                            selectedPartyEntry.slotId,
-                                            slotIndex,
-                                            field.key,
-                                            field.kind,
-                                            field.pickerTitle
-                                          )
-                                        }
-                                        title={field.name}
-                                        disabled={!saveDocument}
-                                      >
-                                        <AssetThumb urls={field.thumbUrls} alt={field.name} size={36} pixelated={field.pixelated} />
-                                      </button>
-                                    </div>
+                                    <button
+                                      key={field.key}
+                                      type='button'
+                                      className={`relative flex items-center justify-center overflow-hidden rounded-[3px] border border-zinc-400 bg-white px-1 pb-4 pt-1 text-left shadow-sm transition hover:border-primary hover:ring-2 hover:ring-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60 ${field.tileClassName}`}
+                                      onClick={() =>
+                                        openPartyPicker(
+                                          selectedPartyEntry.groupId,
+                                          selectedPartyEntry.slotId,
+                                          slotIndex,
+                                          field.key,
+                                          field.kind,
+                                          field.pickerTitle
+                                        )
+                                      }
+                                      title={field.name}
+                                      disabled={!saveDocument}
+                                    >
+                                      {field.saveLockReason && (
+                                        <span className='absolute right-0.5 top-0.5 z-10 rounded bg-amber-500/90 px-1 py-0.5 text-[8px] font-semibold leading-none text-black'>
+                                          JP
+                                        </span>
+                                      )}
+                                      <AssetThumb
+                                        urls={field.thumbUrls}
+                                        alt={field.name}
+                                        size={field.thumbSize}
+                                        pixelated={field.pixelated}
+                                      />
+                                      <span className='absolute inset-x-0 bottom-0 border-t border-zinc-200 bg-white/95 px-1 py-0.5 text-center text-[10px] font-medium leading-none text-zinc-700'>
+                                        {field.label}
+                                      </span>
+                                    </button>
                                   ))}
                                 </div>
                               </div>
@@ -7684,8 +8208,8 @@ function SaveEditorPageClient() {
                         <DialogTitle>{partyPicker.title}</DialogTitle>
                         <DialogDescription>
                           {partyPicker.kind === 'character'
-                            ? 'Pick a character from the global roster.'
-                            : 'Pick equipment from available equipment metadata.'}
+                            ? 'Pick a character from the global roster. JP-only entries are shown but disabled.'
+                            : 'Pick equipment from available equipment metadata. JP-only entries are shown but disabled.'}
                         </DialogDescription>
                       </DialogHeader>
 
@@ -7736,19 +8260,27 @@ function SaveEditorPageClient() {
                             const meta = characterMetaById[id];
                             const displayName = meta?.nameEN || meta?.nameJP || meta?.faceCode || `Character ${id}`;
                             const thumbUrls = meta ? buildCharacterThumbUrls(meta.faceCode) : [];
+                            const saveLockReason = getCharacterSaveLockReason(meta);
                             return (
                               <button
                                 key={`${partyPicker.kind}-${id}`}
                                 type='button'
-                                className={`rounded-md border p-1 text-left transition ${
+                                className={`relative rounded-md border p-1 text-left transition ${
                                   isSelected
                                     ? 'border-primary/70 bg-primary/15 ring-1 ring-primary/40'
-                                    : 'border-border bg-muted/10 hover:bg-accent'
-                                }`}
+                                    : saveLockReason
+                                      ? 'border-amber-400/40 bg-amber-500/5 opacity-50 grayscale'
+                                      : 'border-border bg-muted/10 hover:bg-accent'
+                                } disabled:cursor-not-allowed`}
                                 onClick={() => applyPartyPickerValue(id)}
-                                disabled={!saveDocument}
-                                title={displayName}
+                                disabled={!saveDocument || Boolean(saveLockReason)}
+                                title={saveLockReason ? `${displayName} - JP-only, cannot be added to EN saves` : displayName}
                               >
+                                {saveLockReason && (
+                                  <span className='absolute right-1 top-1 z-10 rounded bg-amber-500/90 px-1 py-0.5 text-[8px] font-semibold leading-none text-black'>
+                                    JP
+                                  </span>
+                                )}
                                 <AssetThumb urls={thumbUrls} alt={displayName} size={62} pixelated={false} />
                               </button>
                             );
@@ -7757,19 +8289,27 @@ function SaveEditorPageClient() {
                           const meta = itemMetaById[id];
                           const displayName = meta?.name || `Equipment ${id}`;
                           const thumbUrls = [toCdnUrl(meta?.thumbnail || ''), toCdnUrl(meta?.icon || '')].filter(Boolean);
+                          const saveLockReason = getItemSaveLockReason(meta);
                           return (
                             <button
                               key={`${partyPicker.kind}-${id}`}
                               type='button'
-                              className={`rounded-md border p-1 text-left transition ${
+                              className={`relative rounded-md border p-1 text-left transition ${
                                 isSelected
                                   ? 'border-primary/70 bg-primary/15 ring-1 ring-primary/40'
-                                  : 'border-border bg-muted/10 hover:bg-accent'
-                              }`}
+                                  : saveLockReason
+                                    ? 'border-amber-400/40 bg-amber-500/5 opacity-50 grayscale'
+                                    : 'border-border bg-muted/10 hover:bg-accent'
+                              } disabled:cursor-not-allowed`}
                               onClick={() => applyPartyPickerValue(id)}
-                              disabled={!saveDocument}
-                              title={displayName}
+                              disabled={!saveDocument || Boolean(saveLockReason)}
+                              title={saveLockReason ? `${displayName} - JP-only, cannot be added to EN saves` : displayName}
                             >
+                              {saveLockReason && (
+                                <span className='absolute right-1 top-1 z-10 rounded bg-amber-500/90 px-1 py-0.5 text-[8px] font-semibold leading-none text-black'>
+                                  JP
+                                </span>
+                              )}
                               <AssetThumb urls={thumbUrls} alt={displayName} size={62} pixelated />
                             </button>
                           );
@@ -7828,7 +8368,9 @@ function SaveEditorPageClient() {
               </div>
 
               <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
-                {visibleStoryEntries.map((entry) => (
+                {visibleStoryEntries.map((entry) => {
+                  const saveLockReason = getStorySaveLockReason(entry.meta);
+                  return (
                   <div key={`${entry.chapterId}-${entry.index}-${entry.questId}`} className='rounded-lg border bg-muted/15 p-3'>
                     <div className='mb-3 flex items-start gap-3'>
                       <AssetThumb
@@ -7854,6 +8396,11 @@ function SaveEditorPageClient() {
                               {entry.meta.chapterLabel}
                             </Badge>
                           )}
+                          {saveLockReason && (
+                            <Badge variant='outline' className='border-amber-400/70 text-[10px] text-amber-300'>
+                              JP only
+                            </Badge>
+                          )}
                         </div>
                         <p className='mt-1 truncate text-[10px] text-muted-foreground' title={entry.meta?.orderedMapPath ?? ''}>
                           {entry.meta?.orderedMapPath ? `orderedmap: ${entry.meta.orderedMapPath}` : `chapter key: ${entry.chapterId}`}
@@ -7870,7 +8417,7 @@ function SaveEditorPageClient() {
                               target.finished = event.target.checked;
                             })
                           }
-                          disabled={!saveDocument}
+                          disabled={!saveDocument || Boolean(saveLockReason)}
                         />
                         Finished
                       </label>
@@ -7884,7 +8431,7 @@ function SaveEditorPageClient() {
                               target.clear_rank = toNumeric(event.target.value, 0);
                             })
                           }
-                          disabled={!saveDocument}
+                          disabled={!saveDocument || Boolean(saveLockReason)}
                         />
                       </div>
                       <div>
@@ -7896,12 +8443,13 @@ function SaveEditorPageClient() {
                               target.high_score = event.target.value;
                             })
                           }
-                          disabled={!saveDocument}
+                          disabled={!saveDocument || Boolean(saveLockReason)}
                         />
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
 
                 {visibleStoryEntries.length === 0 && (
                   <div className='rounded-md border border-dashed p-4 text-sm text-muted-foreground'>

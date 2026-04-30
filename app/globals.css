@@ -116,4 +116,8 @@
       transform: translateX(0);
     }
   }
+
+  .wf-inline-translation {
+    @apply rounded-sm bg-emerald-500/12 px-1 py-0.5 text-foreground ring-1 ring-emerald-500/25;
+  }
 }

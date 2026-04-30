@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import { Character, parseCharacterAllData } from '@/lib/character-parser';
+import { buildCharacterSquareImageUrl } from '@/lib/character-assets';
 
 interface CharacterLayoutProps {
   children: React.ReactNode;
@@ -59,8 +60,8 @@ export async function generateMetadata({
   const fullTitle = title ? `${name} - ${title}` : name;
   const metaDescription = description || `${fullTitle} - ${character.attribute} ${character.weaponType} character from World Flipper`;
 
-  // Use square_0 image from CDN for better quality in embeds
-  const imageUrl = `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${character.faceCode}/ui/square_0.png`;
+  // Use square_0 image from CDN for better quality in embeds.
+  const imageUrl = buildCharacterSquareImageUrl(character.faceCode);
   const faviconUrl = `/api/assets/image?url=${encodeURIComponent(imageUrl)}`;
 
   return {

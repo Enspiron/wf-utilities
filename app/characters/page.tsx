@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, X, Grid3x3, List, Loader2, User, ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -11,107 +11,37 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { CharacterPortrait } from '@/components/character/character-portrait';
+import {
+  buildCharacterSquareImageUrl,
+  getCharacterAttributeIcon as getAttributeIcon,
+  getCharacterRaceIcon as getRaceIcon,
+  getCharacterRarityIcon as getRarityIcon,
+  getCharacterStanceIcon as getStanceIcon,
+  getCharacterWeaponTypeIcon as getWeaponTypeIcon,
+} from '@/lib/character-assets';
 import { Character, CharacterFilters, filterCharacters, getUniqueValues } from '@/lib/character-parser';
+import { searchDocuments } from '@/lib/search/core';
+import { buildCharacterSearchDocument } from '@/lib/search/documents';
 
 const ITEMS_PER_PAGE = 96;
 
-// Icon mapping helpers
-const getAttributeIcon = (attr: string) => {
-  const map: Record<string, string> = {
-    'Fire': 'red',
-    'Water': 'blue',
-    'Thunder': 'yellow',
-    'Wind': 'green',
-    'Light': 'white',
-    'Dark': 'black',
-  };
-  return `/FilterIcons/elements/round_ability_${map[attr] || attr.toLowerCase()}.png`;
-};
-
-const getWeaponTypeIcon = (type: string) => {
-  const map: Record<string, string> = {
-    'Slash': 'fighter',
-    'Strike': 'knight',
-    'Thrust': 'special',
-    'Shot': 'ranged',
-    'Support': 'supporter',
-  };
-  const iconName = map[type] || type.toLowerCase();
-  return `/FilterIcons/types/type_${iconName}_medium.png`;
-};
-
-const getStanceIcon = (stance: string) => {
-  const map: Record<string, string> = {
-    'Supporter': 'buffer',
-    'Jammer': 'debuffer',
-  };
-  const iconName = map[stance] || stance.toLowerCase();
-  return `/FilterIcons/stances/stance_${iconName}_medium.png`;
-};
-
-const getRaceIcon = (race: string) => {
-  const map: Record<string, string> = {
-    'Mecha': 'machine',
-    'Sprite': 'element',
-    'Demon': 'devil',
-    'Plant': 'plants',
-    'Youkai': 'mystery',
-    'Human / Youkai': 'mystery',  // Handle hybrid races
-  };
-  // Clean race name: take first part if it contains a slash, remove special chars
-  const cleanedRace = race.includes('/') ? race.split('/')[0].trim() : race;
-  const iconName = map[race] || map[cleanedRace] || cleanedRace.toLowerCase();
-  return `/FilterIcons/races/race_${iconName}_medium.png`;
-};
-
-const getRarityIcon = (rarity: string) => {
-  const rarityMap: Record<string, string> = {
-    '1': 'one',
-    '2': 'two',
-    '3': 'three',
-    '4': 'four',
-    '5': 'five',
-  };
-  const rarityWord = rarityMap[rarity] || 'five';
-  return `/FilterIcons/rarity/rarity_${rarityWord}.png`;
-};
-
-const toCharacterImageUrl = (faceCode: string) =>
-  `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${faceCode}/ui/square_0.png`;
-
-function CharacterPortrait({ src, name }: { src: string; name: string }) {
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
-
-  if (failedSrc === src) {
-    return <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">No Img</div>;
-  }
-
-  return (
-    <Image
-      src={src}
-      alt={name}
-      fill
-      className="object-contain [image-rendering:auto]"
-      loading="lazy"
-      unoptimized
-      onError={() => setFailedSrc(src)}
-    />
-  );
-}
-
-export default function CharactersPage() {
+function CharactersPageClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const qParam = searchParams.get('q') || '';
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
   const [language, setLanguage] = useState<'jp' | 'en'>('en');
   const [layout, setLayout] = useState<'grid' | 'list'>('grid');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(qParam);
   const [currentPage, setCurrentPage] = useState(1);
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [modalTooltipsArmed, setModalTooltipsArmed] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const suggestionRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [apiJpExclusiveCount, setApiJpExclusiveCount] = useState<number | null>(null);
   
   const [filters, setFilters] = useState<CharacterFilters>({});
 
@@ -120,9 +50,10 @@ export default function CharactersPage() {
     async function loadCharacters() {
       setLoading(true);
       try {
-        const response = await fetch('/api/characters?lang=both');
+        const response = await fetch('/api/characters?lang=both', { cache: 'no-store' });
         const data = await response.json();
         setCharacters(data.characters || []);
+        setApiJpExclusiveCount(Number.isFinite(data.jpExclusiveCount) ? data.jpExclusiveCount : null);
       } catch (error) {
         console.error('Error loading characters:', error);
       } finally {
@@ -164,27 +95,38 @@ export default function CharactersPage() {
     });
   }, [filterOptions.genders]);
 
+  const characterSearchIndex = useMemo(
+    () =>
+      characters.map((char) => {
+        const document = buildCharacterSearchDocument(char);
+        return { char, document };
+      }),
+    [characters]
+  );
+
+  const characterByDocumentId = useMemo(
+    () => new Map(characterSearchIndex.map((entry) => [entry.document.id, entry.char])),
+    [characterSearchIndex]
+  );
+
+  const characterDocumentByFaceCode = useMemo(
+    () => new Map(characterSearchIndex.map((entry) => [entry.char.faceCode, entry.document])),
+    [characterSearchIndex]
+  );
+
   // Apply filters and search
   const filteredCharacters = useMemo(() => {
-    let result = filterCharacters(characters, filters);
-    
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      result = result.filter((char) =>
-        char.nameJP.toLowerCase().includes(term) ||
-        char.nameEN?.toLowerCase().includes(term) ||
-        char.subNameJP.toLowerCase().includes(term) ||
-        char.subNameEN?.toLowerCase().includes(term) ||
-        char.titleJP.toLowerCase().includes(term) ||
-        char.titleEN?.toLowerCase().includes(term) ||
-        char.faceCode.toLowerCase().includes(term) ||
-        char.voiceActorJP.toLowerCase().includes(term) ||
-        char.voiceActorEN?.toLowerCase().includes(term)
-      );
-    }
-    
-    return result;
-  }, [characters, filters, searchTerm]);
+    const base = filterCharacters(characters, filters);
+    if (!searchTerm.trim()) return base;
+
+    const candidateDocuments = base
+      .map((char) => characterDocumentByFaceCode.get(char.faceCode))
+      .filter((document): document is ReturnType<typeof buildCharacterSearchDocument> => Boolean(document));
+
+    return searchDocuments(candidateDocuments, searchTerm).results
+      .map((result) => characterByDocumentId.get(result.document.id))
+      .filter((char): char is Character => Boolean(char));
+  }, [characterByDocumentId, characterDocumentByFaceCode, characters, filters, searchTerm]);
 
   // Reset suggestion index when search term changes
   useEffect(() => {
@@ -237,29 +179,29 @@ export default function CharactersPage() {
 
   // Autocomplete suggestions
   const searchSuggestions = useMemo(() => {
-    if (!searchTerm || searchTerm.length < 2) return [];
-    
-    const term = searchTerm.toLowerCase();
-    const suggestions: Array<{ text: string; type: string; char: Character }> = [];
-    
-    characters.forEach((char) => {
-      if (char.nameJP.toLowerCase().includes(term)) {
-        suggestions.push({ text: char.nameJP, type: 'Name (JP)', char });
-      }
-      if (char.nameEN?.toLowerCase().includes(term)) {
-        suggestions.push({ text: char.nameEN, type: 'Name (EN)', char });
-      }
-      if (char.faceCode.toLowerCase().includes(term)) {
-        suggestions.push({ text: char.faceCode, type: 'Face Code', char });
-      }
-    });
-    
-    const uniqueSuggestions = suggestions
-      .filter((s, i, arr) => arr.findIndex(x => x.text === s.text) === i)
-      .slice(0, 10);
-    
-    return uniqueSuggestions;
-  }, [searchTerm, characters]);
+    if (!searchTerm.trim()) return [];
+
+    return searchDocuments(
+      characterSearchIndex.map((entry) => entry.document),
+      searchTerm,
+      { limit: 10 }
+    ).results
+      .map((result) => {
+        const char = characterByDocumentId.get(result.document.id);
+        if (!char) return null;
+        return {
+          char,
+          text: result.document.title,
+          value: result.match.bestFieldKey === 'faceCode' ? char.faceCode : result.document.title,
+          type: result.match.reason,
+        };
+      })
+      .filter(
+        (
+          suggestion
+        ): suggestion is { char: Character; text: string; value: string; type: string } => Boolean(suggestion)
+      );
+  }, [characterByDocumentId, characterSearchIndex, searchTerm]);
 
   // Pagination
   const totalPages = Math.ceil(filteredCharacters.length / ITEMS_PER_PAGE);
@@ -287,7 +229,7 @@ export default function CharactersPage() {
   }, [language]);
 
   const getCharacterImage = useCallback((faceCode: string) => {
-    return toCharacterImageUrl(faceCode);
+    return buildCharacterSquareImageUrl(faceCode);
   }, []);
 
   const clearFilter = (key: keyof CharacterFilters) => {
@@ -302,12 +244,27 @@ export default function CharactersPage() {
     setFilters({});
   };
 
+  const toggleJpExclusiveFilter = () => {
+    setFilters((prev) => ({ ...prev, jpExclusive: prev.jpExclusive ? undefined : true }));
+  };
+
+  const getFilterBadgeLabel = (key: string, value: unknown) => {
+    if (key === 'jpExclusive') return 'JP Exclusive';
+    return String(value);
+  };
+
   const activeFilterCount = Object.values(filters).reduce((count, value) => {
     if (Array.isArray(value)) {
       return count + value.length;
     }
     return count + (value ? 1 : 0);
   }, 0);
+
+  const derivedJpExclusiveCount = useMemo(
+    () => characters.filter((character) => character.jpExclusive === true).length,
+    [characters]
+  );
+  const jpExclusiveCount = apiJpExclusiveCount ?? derivedJpExclusiveCount;
 
   if (loading) {
     return (
@@ -360,7 +317,7 @@ export default function CharactersPage() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none z-10" />
               <Input
                 type="text"
-                placeholder="Search by name, face code..."
+                placeholder="Search name, face, VA, or use id:/face:/va:/rarity:..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onFocus={() => setShowSuggestions(true)}
@@ -378,7 +335,7 @@ export default function CharactersPage() {
                     setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
                   } else if (e.key === 'Enter' && selectedSuggestionIndex >= 0) {
                     e.preventDefault();
-                    setSearchTerm(searchSuggestions[selectedSuggestionIndex].text);
+                    setSearchTerm(searchSuggestions[selectedSuggestionIndex].value);
                     setShowSuggestions(false);
                     setSelectedSuggestionIndex(-1);
                   } else if (e.key === 'Escape') {
@@ -412,7 +369,7 @@ export default function CharactersPage() {
                           : 'hover:bg-accent hover:text-accent-foreground'
                       }`}
                       onMouseDown={() => {
-                        setSearchTerm(suggestion.text);
+                        setSearchTerm(suggestion.value);
                         setShowSuggestions(false);
                         setSelectedSuggestionIndex(-1);
                       }}
@@ -440,6 +397,16 @@ export default function CharactersPage() {
                   {activeFilterCount}
                 </Badge>
               )}
+            </Button>
+
+            <Button
+              variant={filters.jpExclusive ? 'default' : 'outline'}
+              size="sm"
+              onClick={toggleJpExclusiveFilter}
+              className="h-10 px-3 md:px-4 order-2 md:order-3"
+              title="Show JP-exclusive characters"
+            >
+              JP Only
             </Button>
 
             {/* Layout Toggle */}
@@ -501,7 +468,7 @@ export default function CharactersPage() {
                   }
                   return (
                     <Badge key={key} variant="secondary" className="gap-1">
-                      {value}
+                      {getFilterBadgeLabel(key, value)}
                       <X 
                         className="h-3 w-3 cursor-pointer" 
                         onClick={() => clearFilter(key as keyof CharacterFilters)}
@@ -533,7 +500,7 @@ export default function CharactersPage() {
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none z-10" />
                 <Input
                   type="text"
-                  placeholder="Search by name, face code..."
+                placeholder="Search name, face, VA, or use id:/face:/va:/rarity:..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   onFocus={() => setShowSuggestions(true)}
@@ -551,7 +518,7 @@ export default function CharactersPage() {
                       setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
                     } else if (e.key === 'Enter' && selectedSuggestionIndex >= 0) {
                       e.preventDefault();
-                      setSearchTerm(searchSuggestions[selectedSuggestionIndex].text);
+                    setSearchTerm(searchSuggestions[selectedSuggestionIndex].value);
                       setShowSuggestions(false);
                       setSelectedSuggestionIndex(-1);
                     } else if (e.key === 'Escape') {
@@ -585,7 +552,7 @@ export default function CharactersPage() {
                             : 'hover:bg-accent hover:text-accent-foreground'
                         }`}
                         onMouseDown={() => {
-                          setSearchTerm(suggestion.text);
+                        setSearchTerm(suggestion.value);
                           setShowSuggestions(false);
                           setSelectedSuggestionIndex(-1);
                         }}
@@ -619,6 +586,28 @@ export default function CharactersPage() {
 
             <ScrollArea className="flex-1 min-h-0 px-3 py-3">
               <div className="space-y-3">
+                <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Region</label>
+                    {filters.jpExclusive && (
+                      <Button variant="ghost" size="sm" onClick={() => setFilters(prev => ({ ...prev, jpExclusive: undefined }))} className="h-6 px-2 text-xs">
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <Button
+                    variant={filters.jpExclusive ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={toggleJpExclusiveFilter}
+                    className="h-8 w-full justify-between text-xs"
+                  >
+                    <span>JP Exclusive</span>
+                    <Badge variant={filters.jpExclusive ? 'secondary' : 'outline'} className="text-[10px]">
+                      {jpExclusiveCount}
+                    </Badge>
+                  </Button>
+                </div>
+
                 <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-2.5">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Attribute</label>
@@ -1087,6 +1076,29 @@ export default function CharactersPage() {
 
           <ScrollArea className="flex-1 min-h-0 px-2 py-2 sm:px-4 sm:py-3">
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+              {/* Region Filter */}
+              <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:text-xs">Region</label>
+                  {filters.jpExclusive && (
+                    <Button variant="ghost" size="sm" onClick={() => setFilters(prev => ({ ...prev, jpExclusive: undefined }))} className="h-5 px-1.5 text-[10px]">
+                      Clear
+                    </Button>
+                  )}
+                </div>
+                <Button
+                  variant={filters.jpExclusive ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={toggleJpExclusiveFilter}
+                  className="h-8 w-full justify-between text-[11px]"
+                >
+                  <span>JP Exclusive</span>
+                  <Badge variant={filters.jpExclusive ? 'secondary' : 'outline'} className="text-[10px]">
+                    {jpExclusiveCount}
+                  </Badge>
+                </Button>
+              </div>
+
               {/* Attribute Filter */}
               <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-2">
                 <div className="flex items-center justify-between">
@@ -1340,6 +1352,27 @@ export default function CharactersPage() {
         </DialogContent>
       </Dialog>
     </TooltipProvider>
+  );
+}
+
+function CharactersPageFallback() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center p-4 sm:p-6">
+      <Card className="w-full max-w-md">
+        <CardContent className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading characters...
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function CharactersPage() {
+  return (
+    <Suspense fallback={<CharactersPageFallback />}>
+      <CharactersPageClient />
+    </Suspense>
   );
 }
 

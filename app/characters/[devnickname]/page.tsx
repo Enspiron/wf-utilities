@@ -25,6 +25,18 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import AudioPlayer from '@/components/AudioPlayer';
+import {
+  buildCharacterSquareImageUrl,
+  buildCharacterVoiceUrl as toVoiceUrl,
+  buildSfxUrl as toSfxUrl,
+  characterClassNames,
+  getCharacterAttributeAccentClasses as getAttributeAccentClasses,
+  getCharacterAttributeIcon as getAttributeIcon,
+  getCharacterRaceIcon as getRaceIcon,
+  getCharacterRarityIcon as getRarityIcon,
+  getCharacterStanceIcon as getStanceIcon,
+  getCharacterWeaponTypeIcon as getWeaponTypeIcon,
+} from '@/lib/character-assets';
 
 interface CharacterTheme {
   path: string;
@@ -131,88 +143,9 @@ const TAB_ITEMS: Array<{ key: DetailTab; label: string; icon: LucideIcon }> = [
   { key: 'voice', label: 'Voice & SFX', icon: Volume2 },
 ];
 
-const toVoiceUrl = (faceCode: string, cue: string) => {
-  const normalizedCue = cue.replace(/^\/+/, '').replace(/\.mp3$/i, '');
-  return `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${faceCode}/voice/${normalizedCue}.mp3`;
-};
-
-const toSfxUrl = (soundPath: string) => {
-  const normalizedPath = soundPath.replace(/^\/+/, '').replace(/\.mp3$/i, '');
-  return `https://wfjukebox.b-cdn.net/${normalizedPath}.mp3`;
-};
-
 const cueLabel = (cue: string) => cue.split('/').pop() || cue;
 
-const getAttributeIcon = (attr: string) => {
-  const map: Record<string, string> = {
-    Fire: 'red',
-    Water: 'blue',
-    Thunder: 'yellow',
-    Wind: 'green',
-    Light: 'white',
-    Dark: 'black',
-  };
-  return `/FilterIcons/elements/round_ability_${map[attr] || attr.toLowerCase()}.png`;
-};
-
-const getWeaponTypeIcon = (type: string) => {
-  const map: Record<string, string> = {
-    Slash: 'fighter',
-    Strike: 'knight',
-    Thrust: 'special',
-    Shot: 'ranged',
-    Support: 'supporter',
-  };
-  return `/FilterIcons/types/type_${map[type] || type.toLowerCase()}_medium.png`;
-};
-
-const getStanceIcon = (stance: string) => {
-  const map: Record<string, string> = {
-    Supporter: 'buffer',
-    Jammer: 'debuffer',
-  };
-  return `/FilterIcons/stances/stance_${map[stance] || stance.toLowerCase()}_medium.png`;
-};
-
-const getRaceIcon = (race: string) => {
-  const map: Record<string, string> = {
-    Mecha: 'machine',
-    Sprite: 'element',
-    Demon: 'devil',
-    Plant: 'plants',
-    Youkai: 'mystery',
-  };
-
-  const primaryRace = race.includes('/') ? race.split('/')[0].trim() : race;
-  const normalizedRace = primaryRace === 'Plants' ? 'Plant' : primaryRace;
-  return `/FilterIcons/races/race_${map[normalizedRace] || normalizedRace.toLowerCase()}_medium.png`;
-};
-
-const getRarityIcon = (rarity: number) => {
-  const rarityMap: Record<number, string> = {
-    1: 'one',
-    2: 'two',
-    3: 'three',
-    4: 'four',
-    5: 'five',
-  };
-  return `/FilterIcons/rarity/rarity_${rarityMap[rarity] || 'five'}.png`;
-};
-
-const getAttributeAccentClasses = (attribute: string) => {
-  const map: Record<string, string> = {
-    Fire: 'from-rose-500/20 via-orange-500/10 to-transparent',
-    Water: 'from-sky-500/20 via-cyan-500/10 to-transparent',
-    Thunder: 'from-amber-500/20 via-yellow-500/10 to-transparent',
-    Wind: 'from-emerald-500/20 via-lime-500/10 to-transparent',
-    Light: 'from-zinc-200/30 via-slate-200/10 to-transparent',
-    Dark: 'from-violet-500/20 via-indigo-500/10 to-transparent',
-  };
-  return map[attribute] || 'from-primary/15 via-primary/5 to-transparent';
-};
-
-const HERO_TAG_BADGE_CLASS =
-  'inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md border border-border/70 bg-card/80 px-2.5 text-xs font-semibold text-foreground';
+const HERO_TAG_BADGE_CLASS = characterClassNames.heroTagBadge;
 
 const pickByLanguage = (en: string, jp: string, language: 'en' | 'jp') => {
   if (language === 'jp') return jp || en;
@@ -449,9 +382,7 @@ export default function CharacterDetailPage() {
   const descriptionEN = character?.descriptionEN || '';
   const descriptionJP = character?.descriptionJP || '';
   const attributeAccentClasses = getAttributeAccentClasses(character?.attribute || '');
-  const heroIconUrl = character?.faceCode
-    ? `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${character.faceCode}/ui/square_0.png`
-    : '';
+  const heroIconUrl = character?.faceCode ? buildCharacterSquareImageUrl(character.faceCode) : '';
 
   useEffect(() => {
     setHeroIconFailed(false);

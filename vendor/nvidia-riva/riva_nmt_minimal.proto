@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package nvidia.riva.nmt;
+
+service RivaTranslation {
+  rpc TranslateText(TranslateTextRequest) returns (TranslateTextResponse) {}
+  rpc ListSupportedLanguagePairs(AvailableLanguageRequest) returns (AvailableLanguageResponse) {}
+}
+
+message TranslateTextRequest {
+  repeated string texts = 1;
+  string model = 2;
+  string source_language = 3;
+  string target_language = 4;
+  repeated string dnt_phrases = 5;
+  string max_len_variation = 6;
+}
+
+message Translation {
+  string text = 1;
+  string language = 2;
+}
+
+message TranslateTextResponse {
+  repeated Translation translations = 1;
+}
+
+message AvailableLanguageRequest {
+  string model = 1;
+}
+
+message AvailableLanguageResponse {
+  message LanguagePair {
+    repeated string src_lang = 1;
+    repeated string tgt_lang = 2;
+  }
+
+  map<string, LanguagePair> languages = 1;
+}

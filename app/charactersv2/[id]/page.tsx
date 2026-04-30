@@ -23,6 +23,18 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  buildCharacterSquareImageUrl,
+  buildCharacterVoiceUrl as toVoiceUrl,
+  buildSfxUrl as toSfxUrl,
+  characterAttributeStyles,
+  characterClassNames,
+  getCharacterAttributeIcon as getAttributeIcon,
+  getCharacterRaceIcon as getRaceIcon,
+  getCharacterRarityIcon as getRarityIcon,
+  getCharacterStanceIcon as getStanceIcon,
+  getCharacterWeaponTypeIcon as getWeaponTypeIcon,
+} from '@/lib/character-assets';
 import { cn } from '@/lib/utils';
 
 interface CharacterTheme {
@@ -128,87 +140,14 @@ const SECTION_LINKS = [
   { id: 'voice', label: 'Voice', icon: Volume2 },
 ];
 
-const ATTRIBUTE_STYLES: Record<string, { ring: string; text: string; accent: string }> = {
-  Fire: { ring: 'border-red-500/50', text: 'text-red-300', accent: 'bg-red-500' },
-  Water: { ring: 'border-cyan-500/50', text: 'text-cyan-300', accent: 'bg-cyan-500' },
-  Thunder: { ring: 'border-yellow-400/60', text: 'text-yellow-200', accent: 'bg-yellow-400' },
-  Wind: { ring: 'border-emerald-500/50', text: 'text-emerald-300', accent: 'bg-emerald-500' },
-  Light: { ring: 'border-zinc-200/60', text: 'text-zinc-100', accent: 'bg-zinc-200' },
-  Dark: { ring: 'border-fuchsia-500/50', text: 'text-fuchsia-300', accent: 'bg-fuchsia-500' },
-};
-
-const FACT_LABEL_CLASS = 'text-xs font-medium uppercase tracking-normal text-muted-foreground';
-const PANEL_CLASS = 'rounded-md border border-border/70 bg-card/70';
-const INNER_PANEL_CLASS = 'rounded-md border border-border/70 bg-background/55';
+const ATTRIBUTE_STYLES = characterAttributeStyles;
+const FACT_LABEL_CLASS = characterClassNames.factLabel;
+const PANEL_CLASS = characterClassNames.panel;
+const INNER_PANEL_CLASS = characterClassNames.innerPanel;
 
 function pickByLanguage(en: string, jp: string, language: 'en' | 'jp' | 'both') {
   if (language === 'jp') return jp || en;
   return en || jp;
-}
-
-function toVoiceUrl(faceCode: string, cue: string) {
-  const normalizedCue = cue.replace(/^\/+/, '').replace(/\.mp3$/i, '');
-  return `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${faceCode}/voice/${normalizedCue}.mp3`;
-}
-
-function toSfxUrl(soundPath: string) {
-  const normalizedPath = soundPath.replace(/^\/+/, '').replace(/\.mp3$/i, '');
-  return `https://wfjukebox.b-cdn.net/${normalizedPath}.mp3`;
-}
-
-function getAttributeIcon(attr: string) {
-  const map: Record<string, string> = {
-    Fire: 'red',
-    Water: 'blue',
-    Thunder: 'yellow',
-    Wind: 'green',
-    Light: 'white',
-    Dark: 'black',
-  };
-  return `/FilterIcons/elements/round_ability_${map[attr] || attr.toLowerCase()}.png`;
-}
-
-function getWeaponTypeIcon(type: string) {
-  const map: Record<string, string> = {
-    Slash: 'fighter',
-    Strike: 'knight',
-    Thrust: 'special',
-    Shot: 'ranged',
-    Support: 'supporter',
-  };
-  return `/FilterIcons/types/type_${map[type] || type.toLowerCase()}_medium.png`;
-}
-
-function getStanceIcon(stance: string) {
-  const map: Record<string, string> = {
-    Supporter: 'buffer',
-    Jammer: 'debuffer',
-  };
-  return `/FilterIcons/stances/stance_${map[stance] || stance.toLowerCase()}_medium.png`;
-}
-
-function getRaceIcon(race: string) {
-  const map: Record<string, string> = {
-    Mecha: 'machine',
-    Sprite: 'element',
-    Demon: 'devil',
-    Plant: 'plants',
-    Youkai: 'mystery',
-  };
-  const primaryRace = race.includes('/') ? race.split('/')[0].trim() : race;
-  const normalizedRace = primaryRace === 'Plants' ? 'Plant' : primaryRace;
-  return `/FilterIcons/races/race_${map[normalizedRace] || normalizedRace.toLowerCase()}_medium.png`;
-}
-
-function getRarityIcon(rarity: number) {
-  const rarityMap: Record<number, string> = {
-    1: 'one',
-    2: 'two',
-    3: 'three',
-    4: 'four',
-    5: 'five',
-  };
-  return `/FilterIcons/rarity/rarity_${rarityMap[rarity] || 'five'}.png`;
 }
 
 function cueLabel(cue: string) {
@@ -590,7 +529,7 @@ export default function CharacterV2DetailPage() {
   const leaderAbilityName = language === 'jp'
     ? character.leaderAbilityNameJP || character.leaderAbilityNameEN
     : character.leaderAbilityNameEN || character.leaderAbilityNameJP;
-  const heroIconUrl = `https://wfjukebox.b-cdn.net/wfjukebox/character/character_art/${character.faceCode}/ui/square_0.png`;
+  const heroIconUrl = buildCharacterSquareImageUrl(character.faceCode);
   const primaryArtUrl = selectedArtUrl || availableArtUrls[0] || heroIconUrl;
   const gaugeCount = Object.keys(character.gauges || {}).length + Object.keys(character.maxGauges || {}).length;
 

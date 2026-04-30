@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { unstable_cache } from 'next/cache';
 import { fetchDatalistJson, DATA_CACHE_HEADERS } from '@/lib/data-source';
 
 type JsonRecord = Record<string, unknown>;
@@ -60,6 +59,10 @@ interface CharacterDatasets {
   fullShotEN: JsonRecord;
   fullShotJP: JsonRecord;
 }
+
+const DATASET_TTL_MS = 10 * 60 * 1000;
+let datasetsPromise: Promise<CharacterDatasets> | null = null;
+let datasetsCachedAt = 0;
 
 const weaponRoleMap: Record<string, string> = {
   Sword: 'Slash',
@@ -223,12 +226,21 @@ async function loadDatasetsImpl(): Promise<CharacterDatasets> {
   };
 }
 
-// Replace the old ad-hoc `datasetsCache` Map with Next's durable cache so the
-// payload survives cold starts across Lambda instances.
-const loadDatasets = unstable_cache(loadDatasetsImpl, ['character-detail-datasets'], {
-  revalidate: 600,
-  tags: ['character-detail'],
-});
+async function loadDatasets(): Promise<CharacterDatasets> {
+  const now = Date.now();
+  if (datasetsPromise && now - datasetsCachedAt < DATASET_TTL_MS) {
+    return datasetsPromise;
+  }
+
+  datasetsCachedAt = now;
+  datasetsPromise = loadDatasetsImpl().catch((error) => {
+    datasetsPromise = null;
+    datasetsCachedAt = 0;
+    throw error;
+  });
+
+  return datasetsPromise;
+}
 
 export async function GET(request: NextRequest) {
   try {
